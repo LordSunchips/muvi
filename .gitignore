@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# macOS
+.DS_Store
+
+# Xcode / iOS
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Pods/
+Carthage/Build/
+.swiftpm/
+
+# Local SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+

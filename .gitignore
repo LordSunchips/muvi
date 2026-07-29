@@ -239,3 +239,4 @@ Carthage/Build/
 *.sqlite3
 *.db
 
+.vscode

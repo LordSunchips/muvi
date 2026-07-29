@@ -110,4 +110,5 @@ class RankingSession(SQLModel, table=True):
     candidate_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     lo: int = 0
     hi: int = 0
+    pending_note: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)

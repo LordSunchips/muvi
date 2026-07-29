@@ -1,0 +1,21 @@
+line-length = 120
+target-version = "py314"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+]
+
+[lint.isort]
+known-first-party = ["app"]
+force-sort-within-sections = true
+combine-as-imports = true
+
+[lint.per-file-ignores]
+"app/services/seed_movies.py" = ["E501"]
+
+[format]
+line-ending = "lf"

@@ -34,8 +34,10 @@ app/
     auth.py            signup, login
     library.py         list, add, remove movies
     rank.py            start / compare / delete rankings
-    movies.py          detail (rank history + watches), watch CRUD, settings
+    movies.py          detail (rank history + watches), watch CRUD
+    settings.py        get / patch display_metric (latest / mean / median)
     tmdb.py            search, movie detail, genres
+  scoring.py           computed_score(rankings, metric)
 
 tests/                 pytest suite (algorithm has the heaviest coverage)
 ```

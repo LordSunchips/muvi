@@ -88,3 +88,11 @@ class RankingAlgorithm(Protocol):
         rank_session: RankingSession,
         winner_movie_id: int,
     ) -> CompareResult: ...
+
+    def remove(
+        self,
+        session: Session,
+        ranking: Ranking,
+    ) -> None:
+        """Delete a ranking and apply any bookkeeping the algorithm needs (e.g. rebalancing)."""
+        ...

@@ -85,8 +85,47 @@ def _finalize(
     )
     session.add(ranking)
     session.commit()
+    _rebalance_bucket_scores(session, movie.user_id, bucket, genre_id)
     session.refresh(ranking)
     return ranking
+
+
+def _rebalance_bucket_scores(
+    session: Session,
+    user_id: int,
+    bucket: Bucket,
+    genre_id: int | None,
+) -> None:
+    """Re-space scores of the LATEST in-scope rankings for movies in ``bucket``.
+
+    Beli's mental model: a movie's score reflects its current position in the bucket relative to
+    the other movies in it. When a new movie is inserted or an existing one is removed, the other
+    movies' scores need to move so they stay evenly distributed across the bucket's score band.
+
+    Only the latest ranking per movie is touched — older ranking rows keep their historical scores
+    so mean/median metrics still see the full history.
+    """
+    movies = session.exec(select(Movie).where(Movie.user_id == user_id)).all()
+    latest_rankings: list[Ranking] = []
+    for movie in movies:
+        if genre_id is not None and not any(g.get("id") == genre_id for g in movie.genres):
+            continue
+        latest = _latest_ranking_in_scope(session, movie.id, genre_id)  # type: ignore[arg-type]
+        if latest is None or latest.bucket != bucket:
+            continue
+        latest_rankings.append(latest)
+
+    if not latest_rankings:
+        return
+
+    latest_rankings.sort(key=lambda r: r.score, reverse=True)
+    total = len(latest_rankings)
+    for i, ranking in enumerate(latest_rankings):
+        new_score = score_for_position(i, total, bucket)
+        if ranking.score != new_score:
+            ranking.score = new_score
+            session.add(ranking)
+    session.commit()
 
 
 class BeliRanking(RankingAlgorithm):
@@ -183,3 +222,17 @@ class BeliRanking(RankingAlgorithm):
             poster_path=next_opponent_movie.poster_path,
         )
         return CompareResult(done=False, opponent=opponent)
+
+    def remove(self, session: Session, ranking: Ranking) -> None:
+        movie = session.get(Movie, ranking.movie_id)
+        assert movie is not None
+        deleted_bucket = ranking.bucket
+        deleted_genre_id = ranking.genre_id
+        session.delete(ranking)
+        session.commit()
+        _rebalance_bucket_scores(session, movie.user_id, deleted_bucket, deleted_genre_id)
+        # If this deletion revealed an older ranking in a different bucket, that bucket also
+        # gained a "member" and needs rebalancing.
+        new_latest = _latest_ranking_in_scope(session, movie.id, deleted_genre_id)  # type: ignore[arg-type]
+        if new_latest is not None and new_latest.bucket != deleted_bucket:
+            _rebalance_bucket_scores(session, movie.user_id, new_latest.bucket, deleted_genre_id)

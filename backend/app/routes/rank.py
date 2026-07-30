@@ -114,5 +114,4 @@ def delete_ranking(ranking_id: int, user: CurrentUser, session: SessionDep) -> N
     movie = session.get(Movie, ranking.movie_id)
     if movie is None or movie.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ranking not found")
-    session.delete(ranking)
-    session.commit()
+    _algorithm.remove(session, ranking)

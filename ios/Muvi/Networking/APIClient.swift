@@ -21,7 +21,12 @@ struct APIClient {
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = flexibleDate(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unrecognized date: \(raw)")
+        }
         return d
     }()
 
@@ -30,6 +35,45 @@ struct APIClient {
         e.dateEncodingStrategy = .iso8601
         return e
     }()
+
+    /// Parses the shapes the backend emits: ISO8601 with or without fractional seconds and with
+    /// or without a timezone suffix. Naive timestamps are interpreted as UTC.
+    nonisolated(unsafe) private static let iso8601WithFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    nonisolated(unsafe) private static let iso8601Plain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    nonisolated(unsafe) private static let naiveFormatters: [DateFormatter] = {
+        let patterns = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd",
+        ]
+        return patterns.map { pattern in
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.dateFormat = pattern
+            return f
+        }
+    }()
+
+    private static func flexibleDate(from string: String) -> Date? {
+        if let d = iso8601WithFractional.date(from: string) { return d }
+        if let d = iso8601Plain.date(from: string) { return d }
+        for f in naiveFormatters {
+            if let d = f.date(from: string) { return d }
+        }
+        return nil
+    }
 
     // MARK: - Request builders
 

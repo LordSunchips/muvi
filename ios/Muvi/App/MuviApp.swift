@@ -18,7 +18,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if auth.isAuthenticated {
-                LoggedInPlaceholderView()
+                LibraryView()
             } else {
                 AuthGateView()
             }

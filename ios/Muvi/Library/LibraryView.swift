@@ -4,6 +4,7 @@ struct LibraryView: View {
     @Environment(AuthStore.self) private var auth
     @State private var library = LibraryStore()
     @State private var isPresentingAdd = false
+    @State private var rankingMovie: LibraryMovieDTO?
 
     var body: some View {
         NavigationStack {
@@ -33,6 +34,11 @@ struct LibraryView: View {
                         await library.add(tmdbId: tmdbId)
                     }
                 }
+                .sheet(item: $rankingMovie) { movie in
+                    RankFlowView(movie: movie) {
+                        Task { await library.refresh() }
+                    }
+                }
                 .alert(
                     "Something went wrong",
                     isPresented: Binding(get: { library.lastError != nil }, set: { if !$0 { library.clearError() } })
@@ -53,6 +59,21 @@ struct LibraryView: View {
         } else {
             List(library.movies) { movie in
                 LibraryRow(movie: movie)
+                    .contentShape(Rectangle())
+                    .onTapGesture { rankingMovie = movie }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task { await library.remove(movie) }
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                        Button {
+                            rankingMovie = movie
+                        } label: {
+                            Label("Rank", systemImage: "arrow.up.arrow.down")
+                        }
+                        .tint(.accentColor)
+                    }
             }
             .listStyle(.plain)
         }

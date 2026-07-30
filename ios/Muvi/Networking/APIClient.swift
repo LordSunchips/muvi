@@ -50,7 +50,7 @@ struct APIClient {
         return f
     }()
 
-    nonisolated(unsafe) private static let naiveFormatters: [DateFormatter] = {
+    private static let naiveFormatters: [DateFormatter] = {
         let patterns = [
             "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
             "yyyy-MM-dd'T'HH:mm:ss.SSS",

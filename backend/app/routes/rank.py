@@ -17,6 +17,7 @@ class RankStartRequest(BaseModel):
     bucket: Bucket
     note: str | None = Field(default=None, max_length=2000)
     watched_on: date | None = None
+    genre_id: int | None = None
 
 
 class OpponentOut(BaseModel):
@@ -33,6 +34,7 @@ class RankingOut(BaseModel):
     score: float
     note: str | None
     watched_on: date | None
+    genre_id: int | None
     created_at: datetime
 
 
@@ -60,6 +62,7 @@ def _ranking_out(r: Ranking) -> RankingOut:
         score=r.score,
         note=r.note,
         watched_on=r.watched_on,
+        genre_id=r.genre_id,
         created_at=r.created_at,
     )
 
@@ -69,7 +72,20 @@ def rank_start(payload: RankStartRequest, user: CurrentUser, session: SessionDep
     movie = session.get(Movie, payload.movie_id)
     if movie is None or movie.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found in your library")
-    result = _algorithm.start(session, user, movie, payload.bucket, payload.note, payload.watched_on)
+    if payload.genre_id is not None and not any(g.get("id") == payload.genre_id for g in movie.genres):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This movie isn't tagged with that genre",
+        )
+    result = _algorithm.start(
+        session,
+        user,
+        movie,
+        payload.bucket,
+        note=payload.note,
+        watched_on=payload.watched_on,
+        genre_id=payload.genre_id,
+    )
     if result.done:
         assert result.ranking is not None
         return RankStepOut(done=True, ranking=_ranking_out(result.ranking))

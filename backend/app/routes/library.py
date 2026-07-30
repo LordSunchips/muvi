@@ -40,9 +40,29 @@ def _display_metric(session, user_id: int) -> DisplayMetric:
     return settings.display_metric if settings is not None else DisplayMetric.LATEST
 
 
-def _library_movie(movie: Movie, rankings: list[Ranking], metric: DisplayMetric) -> LibraryMovie:
+def _library_movie(
+    movie: Movie,
+    rankings: list[Ranking],
+    metric: DisplayMetric,
+    genre_id: int | None = None,
+) -> LibraryMovie:
+    """Build the LibraryMovie response for one movie.
+
+    When ``genre_id`` is set, the displayed score prefers rankings scoped to that genre and only
+    falls back to global ones if none exist. The ``bucket`` badge follows the same preference so the
+    row reflects the genre-scoped view of the movie.
+    """
     assert movie.id is not None
-    latest = max(rankings, key=lambda r: r.created_at) if rankings else None
+    # Pick the ranking whose bucket we display alongside the score.
+    latest: Ranking | None = None
+    if genre_id is not None:
+        in_genre = [r for r in rankings if r.genre_id == genre_id]
+        if in_genre:
+            latest = max(in_genre, key=lambda r: r.created_at)
+    if latest is None:
+        globals_only = [r for r in rankings if r.genre_id is None]
+        if globals_only:
+            latest = max(globals_only, key=lambda r: r.created_at)
     return LibraryMovie(
         id=movie.id,
         tmdb_id=movie.tmdb_id,
@@ -51,7 +71,7 @@ def _library_movie(movie: Movie, rankings: list[Ranking], metric: DisplayMetric)
         poster_path=movie.poster_path,
         genres=[GenreOut(**g) for g in movie.genres],
         added_at=movie.added_at,
-        score=computed_score(rankings, metric),
+        score=computed_score(rankings, metric, genre_id=genre_id),
         bucket=latest.bucket if latest is not None else None,
         ranking_count=len(rankings),
     )
@@ -96,11 +116,10 @@ def list_library(
         if genre_id is not None and not any(g.get("id") == genre_id for g in movie.genres):
             continue
         rankings = list(movie.rankings)
-        if bucket is not None:
-            latest = max(rankings, key=lambda r: r.created_at) if rankings else None
-            if latest is None or latest.bucket != bucket:
-                continue
-        results.append(_library_movie(movie, rankings, metric))
+        row = _library_movie(movie, rankings, metric, genre_id=genre_id)
+        if bucket is not None and row.bucket != bucket:
+            continue
+        results.append(row)
 
     # Ranked movies first (by score desc), then unranked (by added_at desc).
     results.sort(

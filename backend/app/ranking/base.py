@@ -79,6 +79,7 @@ class RankingAlgorithm(Protocol):
         bucket: Bucket,
         note: str | None,
         watched_on: date | None,
+        genre_id: int | None,
     ) -> StartResult: ...
 
     def compare(

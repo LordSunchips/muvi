@@ -74,6 +74,9 @@ class Ranking(SQLModel, table=True):
     If ``watched_on`` is set, the user was logging that they watched the movie on that date
     (a "watch"). If it's null, this was a pure re-rank — the user adjusted the movie's
     position without logging a viewing.
+
+    If ``genre_id`` is set, this ranking is scoped to that TMDB genre (e.g. drama's own list);
+    if null, it's a global ranking against the user's whole library.
     """
 
     __tablename__ = "rankings"
@@ -84,6 +87,7 @@ class Ranking(SQLModel, table=True):
     score: float
     note: str | None = None
     watched_on: date | None = None
+    genre_id: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
     movie: Movie = Relationship(back_populates="rankings")
@@ -103,4 +107,5 @@ class RankingSession(SQLModel, table=True):
     hi: int = 0
     pending_note: str | None = None
     pending_watched_on: date | None = None
+    genre_id: int | None = None
     created_at: datetime = Field(default_factory=_utcnow)

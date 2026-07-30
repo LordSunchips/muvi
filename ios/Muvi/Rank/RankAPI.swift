@@ -11,9 +11,21 @@ struct RankAPI {
         return f
     }()
 
-    func start(movieId: Int, bucket: Bucket, note: String?, watchedOn: Date?) async throws -> RankStepDTO {
+    func start(
+        movieId: Int,
+        bucket: Bucket,
+        note: String?,
+        watchedOn: Date?,
+        genreId: Int?
+    ) async throws -> RankStepDTO {
         let dateString = watchedOn.map { Self.dayFormatter.string(from: $0) }
-        let body = RankStartRequest(movieId: movieId, bucket: bucket, note: note, watchedOn: dateString)
+        let body = RankStartRequest(
+            movieId: movieId,
+            bucket: bucket,
+            note: note,
+            watchedOn: dateString,
+            genreId: genreId,
+        )
         return try await client.post("/rank/start", body: body)
     }
 

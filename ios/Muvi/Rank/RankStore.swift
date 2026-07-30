@@ -26,6 +26,9 @@ final class RankStore {
 
     let movie: LibraryMovieDTO
     let mode: Mode
+    /// When set, the ranking is scoped to this TMDB genre (per-genre re-rank flow).
+    /// When nil, the ranking is global.
+    let genre: GenreDTO?
     private(set) var step: Step
     private(set) var lastError: String?
 
@@ -35,9 +38,15 @@ final class RankStore {
 
     private let api: RankAPI
 
-    init(movie: LibraryMovieDTO, mode: Mode, api: RankAPI = RankAPI(client: APIClient())) {
+    init(
+        movie: LibraryMovieDTO,
+        mode: Mode,
+        genre: GenreDTO? = nil,
+        api: RankAPI = RankAPI(client: APIClient())
+    ) {
         self.movie = movie
         self.mode = mode
+        self.genre = genre
         self.api = api
         self.step = (mode == .logWatch) ? .pickingDateNote : .pickingBucket
     }
@@ -67,7 +76,13 @@ final class RankStore {
         let note = (mode == .logWatch && !trimmedNote.isEmpty) ? trimmedNote : nil
         let watchedOn = (mode == .logWatch) ? pendingWatchedOn : nil
         do {
-            let result = try await api.start(movieId: movie.id, bucket: bucket, note: note, watchedOn: watchedOn)
+            let result = try await api.start(
+                movieId: movie.id,
+                bucket: bucket,
+                note: note,
+                watchedOn: watchedOn,
+                genreId: genre?.id
+            )
             apply(result)
         } catch {
             step = .pickingBucket

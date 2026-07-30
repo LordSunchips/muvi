@@ -14,24 +14,7 @@ struct LibraryView: View {
         NavigationStack {
             content
                 .navigationTitle("Library")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            isPresentingAdd = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Add movie")
-                    }
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            isPresentingSettings = true
-                        } label: {
-                            Image(systemName: "person.crop.circle")
-                        }
-                        .accessibilityLabel("Settings")
-                    }
-                }
+                .toolbar { toolbarContent }
                 .refreshable { await library.refresh() }
                 .task { await library.refresh() }
                 .sheet(isPresented: $isPresentingAdd, onDismiss: {
@@ -64,6 +47,65 @@ struct LibraryView: View {
                 } message: {
                     Text(library.lastError ?? "")
                 }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isPresentingSettings = true
+            } label: {
+                Image(systemName: "person.crop.circle")
+            }
+            .accessibilityLabel("Settings")
+        }
+        ToolbarItem(placement: .principal) {
+            genrePickerMenu
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isPresentingAdd = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Add movie")
+        }
+    }
+
+    private var genrePickerMenu: some View {
+        Menu {
+            Button {
+                library.setGenreFilter(nil)
+            } label: {
+                if library.availableGenres.isEmpty {
+                    Text("All movies")
+                } else {
+                    Label("All movies", systemImage: library.genreFilter == nil ? "checkmark" : "")
+                }
+            }
+            if !library.availableGenres.isEmpty {
+                Divider()
+                ForEach(library.availableGenres) { genre in
+                    Button {
+                        library.setGenreFilter(genre)
+                    } label: {
+                        if library.genreFilter?.id == genre.id {
+                            Label(genre.name, systemImage: "checkmark")
+                        } else {
+                            Text(genre.name)
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(library.genreFilter?.name ?? "Library")
+                    .font(.headline)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -100,9 +142,11 @@ struct LibraryView: View {
             Image(systemName: "film.stack")
                 .font(.system(size: 44))
                 .foregroundStyle(.secondary)
-            Text("No movies yet")
+            Text(library.genreFilter == nil ? "No movies yet" : "Nothing in \(library.genreFilter!.name) yet")
                 .font(.headline)
-            Text("Tap + to search TMDB and add your first film.")
+            Text(library.genreFilter == nil
+                 ? "Tap + to search TMDB and add your first film."
+                 : "None of your library movies are tagged with this genre.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

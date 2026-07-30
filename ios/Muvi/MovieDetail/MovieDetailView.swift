@@ -5,7 +5,15 @@ struct MovieDetailView: View {
     let onLibraryChanged: () -> Void
 
     @State private var store: MovieDetailStore
-    @State private var rankMode: RankStore.Mode?
+    /// Simultaneous state: which rank flow (if any) is presented, and — when a per-genre re-rank
+    /// is chosen — which genre it's scoped to. Wrapped so `.sheet(item:)` can drive it.
+    @State private var rankPresentation: RankPresentation?
+
+    struct RankPresentation: Identifiable {
+        let mode: RankStore.Mode
+        let genre: GenreDTO?
+        var id: String { "\(mode.rawValue)-\(genre?.id ?? -1)" }
+    }
 
     init(movieId: Int, onLibraryChanged: @escaping () -> Void) {
         self.movieId = movieId
@@ -19,9 +27,13 @@ struct MovieDetailView: View {
             .refreshable { await store.refresh() }
             .navigationTitle(store.detail?.title ?? "Loading…")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(item: $rankMode) { mode in
+            .sheet(item: $rankPresentation) { presentation in
                 if let detail = store.detail {
-                    RankFlowView(movie: detail.asLibraryMovie, mode: mode) {
+                    RankFlowView(
+                        movie: detail.asLibraryMovie,
+                        mode: presentation.mode,
+                        genre: presentation.genre
+                    ) {
                         Task {
                             await store.refresh()
                             onLibraryChanged()
@@ -96,35 +108,48 @@ struct MovieDetailView: View {
     private func actions(_ detail: MovieDetailDTO) -> some View {
         Section {
             Button {
-                rankMode = .logWatch
+                rankPresentation = RankPresentation(mode: .logWatch, genre: nil)
             } label: {
                 Label("Log a watch", systemImage: "eye")
                     .fontWeight(.semibold)
             }
             if !detail.rankings.isEmpty {
                 Button {
-                    rankMode = .rerank
+                    rankPresentation = RankPresentation(mode: .rerank, genre: nil)
                 } label: {
                     Label("Re-rank without logging watch", systemImage: "arrow.up.arrow.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !detail.genres.isEmpty {
+                Menu {
+                    ForEach(detail.genres) { genre in
+                        Button("Re-rank in \(genre.name)") {
+                            rankPresentation = RankPresentation(mode: .rerank, genre: genre)
+                        }
+                    }
+                } label: {
+                    Label("Re-rank within a genre", systemImage: "square.stack.3d.up")
                         .foregroundStyle(.secondary)
                 }
             }
         } footer: {
             Text(detail.rankings.isEmpty
                  ? "Log a watch to add this movie to your ranked list."
-                 : "Log a watch to record a viewing. Re-rank to adjust its position without logging a viewing.")
+                 : "Log a watch to record a viewing. Re-rank to adjust its global position, or re-rank inside a genre to give it a different score in that genre's filter.")
         }
     }
 
     private func historySection(_ detail: MovieDetailDTO) -> some View {
-        Section {
+        let genreLookup = Dictionary(uniqueKeysWithValues: detail.genres.map { ($0.id, $0.name) })
+        return Section {
             if detail.rankings.isEmpty {
                 Text("Nothing logged yet.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             } else {
                 ForEach(detail.rankings) { ranking in
-                    HistoryRow(ranking: ranking)
+                    HistoryRow(ranking: ranking, genreLookup: genreLookup)
                         .swipeActions {
                             Button(role: .destructive) {
                                 Task { await store.deleteRanking(ranking) }
@@ -137,13 +162,14 @@ struct MovieDetailView: View {
         } header: {
             Text("History")
         } footer: {
-            Text("Rows with a date are watches. Rows without are re-ranks. Swipe left to delete.")
+            Text("Rows with a date are watches. Rows without are re-ranks. Genre-scoped ranks show a tag. Swipe left to delete.")
         }
     }
 }
 
 private struct HistoryRow: View {
     let ranking: RankingDTO
+    let genreLookup: [Int: String]
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -160,6 +186,15 @@ private struct HistoryRow: View {
                 Text(ranking.createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                if let genreId = ranking.genreId, let name = genreLookup[genreId] {
+                    Text("in \(name)")
+                        .font(.caption2.weight(.semibold))
+                        .textCase(.uppercase)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.accentColor)
+                }
                 if let note = ranking.note, !note.isEmpty {
                     Text(note)
                         .font(.caption)

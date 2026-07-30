@@ -7,22 +7,29 @@ import SwiftUI
 struct RankFlowView: View {
     let movie: LibraryMovieDTO
     let mode: RankStore.Mode
+    let genre: GenreDTO?
     let onFinished: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var store: RankStore
 
-    init(movie: LibraryMovieDTO, mode: RankStore.Mode, onFinished: @escaping () -> Void) {
+    init(
+        movie: LibraryMovieDTO,
+        mode: RankStore.Mode,
+        genre: GenreDTO? = nil,
+        onFinished: @escaping () -> Void
+    ) {
         self.movie = movie
         self.mode = mode
+        self.genre = genre
         self.onFinished = onFinished
-        _store = State(initialValue: RankStore(movie: movie, mode: mode))
+        _store = State(initialValue: RankStore(movie: movie, mode: mode, genre: genre))
     }
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle(mode == .logWatch ? "Log a watch" : "Re-rank")
+                .navigationTitle(navigationTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -72,6 +79,15 @@ struct RankFlowView: View {
                 onFinished()
                 dismiss()
             }
+        }
+    }
+
+    private var navigationTitle: String {
+        switch (mode, genre) {
+        case (.logWatch, .some(let g)): return "Log a watch · \(g.name)"
+        case (.logWatch, .none): return "Log a watch"
+        case (.rerank, .some(let g)): return "Re-rank in \(g.name)"
+        case (.rerank, .none): return "Re-rank"
         }
     }
 

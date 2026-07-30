@@ -15,23 +15,42 @@ from app.models import Bucket, Movie, Ranking, RankingSession, User
 from app.ranking.base import CompareResult, OpponentInfo, RankingAlgorithm, StartResult, score_for_position
 
 
-def _latest_ranking(session: Session, movie_id: int) -> Ranking | None:
-    return session.exec(
-        select(Ranking).where(Ranking.movie_id == movie_id).order_by(Ranking.created_at.desc()).limit(1)
-    ).first()
+def _latest_ranking_in_scope(session: Session, movie_id: int, genre_id: int | None) -> Ranking | None:
+    """Latest ranking for ``movie_id`` in the given scope.
+
+    - ``genre_id is None`` (global scope) → the latest ranking where ``Ranking.genre_id is None``.
+    - ``genre_id`` set → the latest ranking with matching ``Ranking.genre_id`` (falls back to nothing;
+      the caller decides how to treat "no ranking in this genre").
+    """
+    query = select(Ranking).where(Ranking.movie_id == movie_id)
+    query = (
+        query.where(Ranking.genre_id.is_(None))  # type: ignore[union-attr]
+        if genre_id is None
+        else query.where(Ranking.genre_id == genre_id)
+    )
+    return session.exec(query.order_by(Ranking.created_at.desc()).limit(1)).first()
 
 
-def _bucket_candidates(session: Session, user: User, bucket: Bucket, exclude_movie_id: int) -> list[Movie]:
-    """User's movies whose LATEST ranking is in ``bucket``, best-first (highest score first).
+def _bucket_candidates(
+    session: Session,
+    user: User,
+    bucket: Bucket,
+    exclude_movie_id: int,
+    genre_id: int | None,
+) -> list[Movie]:
+    """User's movies whose latest in-scope ranking is in ``bucket``, best-first.
 
-    Excludes ``exclude_movie_id`` so a movie doesn't binary-search against itself when being re-ranked.
+    When ``genre_id`` is set, only movies tagged with that genre and with an in-genre ranking count;
+    the resulting opponents are the movies you've re-ranked within this genre.
     """
     movies = session.exec(select(Movie).where(Movie.user_id == user.id)).all()
     scored: list[tuple[float, Movie]] = []
     for movie in movies:
         if movie.id == exclude_movie_id:
             continue
-        latest = _latest_ranking(session, movie.id)  # type: ignore[arg-type]
+        if genre_id is not None and not any(g.get("id") == genre_id for g in movie.genres):
+            continue
+        latest = _latest_ranking_in_scope(session, movie.id, genre_id)  # type: ignore[arg-type]
         if latest is None or latest.bucket != bucket:
             continue
         scored.append((latest.score, movie))
@@ -53,6 +72,7 @@ def _finalize(
     total: int,
     note: str | None,
     watched_on: date | None,
+    genre_id: int | None,
 ) -> Ranking:
     score = score_for_position(position, total, bucket)
     ranking = Ranking(
@@ -61,6 +81,7 @@ def _finalize(
         score=score,
         note=note,
         watched_on=watched_on,
+        genre_id=genre_id,
     )
     session.add(ranking)
     session.commit()
@@ -77,10 +98,13 @@ class BeliRanking(RankingAlgorithm):
         bucket: Bucket,
         note: str | None = None,
         watched_on: date | None = None,
+        genre_id: int | None = None,
     ) -> StartResult:
-        candidates = _bucket_candidates(session, user, bucket, exclude_movie_id=movie.id or -1)
+        candidates = _bucket_candidates(session, user, bucket, exclude_movie_id=movie.id or -1, genre_id=genre_id)
         if not candidates:
-            ranking = _finalize(session, movie, bucket, position=0, total=1, note=note, watched_on=watched_on)
+            ranking = _finalize(
+                session, movie, bucket, position=0, total=1, note=note, watched_on=watched_on, genre_id=genre_id
+            )
             return StartResult(done=True, ranking=ranking)
 
         assert movie.id is not None
@@ -94,6 +118,7 @@ class BeliRanking(RankingAlgorithm):
             hi=len(candidates),
             pending_note=note,
             pending_watched_on=watched_on,
+            genre_id=genre_id,
         )
         session.add(rank_session)
         session.commit()
@@ -141,6 +166,7 @@ class BeliRanking(RankingAlgorithm):
                 total=len(candidates_ids) + 1,
                 note=rank_session.pending_note,
                 watched_on=rank_session.pending_watched_on,
+                genre_id=rank_session.genre_id,
             )
             session.delete(rank_session)
             session.commit()

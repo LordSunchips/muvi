@@ -22,6 +22,7 @@ class RankingOut(BaseModel):
     score: float
     note: str | None
     watched_on: date | None
+    genre_id: int | None
     created_at: datetime
 
 
@@ -77,6 +78,7 @@ def movie_detail(movie_id: int, user: CurrentUser, session: SessionDep) -> Movie
                 score=r.score,
                 note=r.note,
                 watched_on=r.watched_on,
+                genre_id=r.genre_id,
                 created_at=r.created_at,
             )
             for r in rankings

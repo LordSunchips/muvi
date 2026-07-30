@@ -23,6 +23,7 @@ struct RankingDTO: Codable, Hashable, Identifiable {
     let score: Double
     let note: String?
     let watchedOn: Date?
+    let genreId: Int?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -32,6 +33,7 @@ struct RankingDTO: Codable, Hashable, Identifiable {
         case score
         case note
         case watchedOn = "watched_on"
+        case genreId = "genre_id"
         case createdAt = "created_at"
     }
 }
@@ -57,12 +59,14 @@ struct RankStartRequest: Encodable {
     let bucket: Bucket
     let note: String?
     let watchedOn: String?
+    let genreId: Int?
 
     enum CodingKeys: String, CodingKey {
         case movieId = "movie_id"
         case bucket
         case note
         case watchedOn = "watched_on"
+        case genreId = "genre_id"
     }
 }
 

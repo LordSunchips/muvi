@@ -5,6 +5,10 @@ struct LibraryView: View {
     @State private var library = LibraryStore()
     @State private var isPresentingAdd = false
     @State private var isPresentingSettings = false
+    // Set when AddMovieView returns a newly-added movie; consumed by the sheet's onDismiss
+    // handler to open the log-a-watch flow so add-then-rank is a single continuous action.
+    @State private var justAddedMovie: LibraryMovieDTO?
+    @State private var pendingLogWatchMovie: LibraryMovieDTO?
 
     var body: some View {
         NavigationStack {
@@ -30,9 +34,21 @@ struct LibraryView: View {
                 }
                 .refreshable { await library.refresh() }
                 .task { await library.refresh() }
-                .sheet(isPresented: $isPresentingAdd) {
+                .sheet(isPresented: $isPresentingAdd, onDismiss: {
+                    if let movie = justAddedMovie {
+                        pendingLogWatchMovie = movie
+                        justAddedMovie = nil
+                    }
+                }) {
                     AddMovieView { tmdbId in
-                        await library.add(tmdbId: tmdbId)
+                        let movie = await library.add(tmdbId: tmdbId)
+                        justAddedMovie = movie
+                        return movie
+                    }
+                }
+                .sheet(item: $pendingLogWatchMovie) { movie in
+                    RankFlowView(movie: movie, mode: .logWatch) {
+                        Task { await library.refresh() }
                     }
                 }
                 .sheet(isPresented: $isPresentingSettings) {

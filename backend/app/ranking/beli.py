@@ -6,6 +6,7 @@ Existing rankings are never mutated — score drift is accepted in exchange for 
 """
 
 from collections.abc import Sequence
+from datetime import date
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -44,9 +45,23 @@ def _opponent(movies: Sequence[Movie], index: int) -> OpponentInfo:
     return OpponentInfo(movie_id=m.id, title=m.title, year=m.year, poster_path=m.poster_path)
 
 
-def _finalize(session: Session, movie: Movie, bucket: Bucket, position: int, total: int, note: str | None) -> Ranking:
+def _finalize(
+    session: Session,
+    movie: Movie,
+    bucket: Bucket,
+    position: int,
+    total: int,
+    note: str | None,
+    watched_on: date | None,
+) -> Ranking:
     score = score_for_position(position, total, bucket)
-    ranking = Ranking(movie_id=movie.id, bucket=bucket, score=score, note=note)  # type: ignore[arg-type]
+    ranking = Ranking(
+        movie_id=movie.id,  # type: ignore[arg-type]
+        bucket=bucket,
+        score=score,
+        note=note,
+        watched_on=watched_on,
+    )
     session.add(ranking)
     session.commit()
     session.refresh(ranking)
@@ -60,11 +75,12 @@ class BeliRanking(RankingAlgorithm):
         user: User,
         movie: Movie,
         bucket: Bucket,
-        note: str | None,
+        note: str | None = None,
+        watched_on: date | None = None,
     ) -> StartResult:
         candidates = _bucket_candidates(session, user, bucket, exclude_movie_id=movie.id or -1)
         if not candidates:
-            ranking = _finalize(session, movie, bucket, position=0, total=1, note=note)
+            ranking = _finalize(session, movie, bucket, position=0, total=1, note=note, watched_on=watched_on)
             return StartResult(done=True, ranking=ranking)
 
         assert movie.id is not None
@@ -77,6 +93,7 @@ class BeliRanking(RankingAlgorithm):
             lo=0,
             hi=len(candidates),
             pending_note=note,
+            pending_watched_on=watched_on,
         )
         session.add(rank_session)
         session.commit()
@@ -123,6 +140,7 @@ class BeliRanking(RankingAlgorithm):
                 position=rank_session.lo,
                 total=len(candidates_ids) + 1,
                 note=rank_session.pending_note,
+                watched_on=rank_session.pending_watched_on,
             )
             session.delete(rank_session)
             session.commit()

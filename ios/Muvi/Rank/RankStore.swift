@@ -1,15 +1,22 @@
 import Foundation
 import Observation
 
-/// Drives the multi-step Beli ranking flow for a single movie.
+/// Drives the Beli rank flow for a single movie. Two entry-point modes:
 ///
-/// The state machine is: ``pickingBucket`` → (server may finalize immediately if the bucket is
-/// empty, jumping to ``finished``) → ``comparing`` → repeat compare with new opponents →
-/// ``finished``. Errors surface via ``lastError`` and don't advance the state.
+/// - ``Mode/logWatch``: primary flow. Starts on the date/note step so the user records that they
+///   watched the movie, then continues into the bucket picker + comparisons.
+/// - ``Mode/rerank``: adjust an existing ranking. Skips the date/note step and lands directly on
+///   the bucket picker; the resulting ranking has ``watched_on`` == nil.
 @MainActor
 @Observable
 final class RankStore {
+    enum Mode: String, Identifiable {
+        case logWatch, rerank
+        var id: String { rawValue }
+    }
+
     enum Step: Equatable {
+        case pickingDateNote
         case pickingBucket
         case starting
         case comparing(sessionId: Int, opponent: OpponentDTO)
@@ -18,23 +25,25 @@ final class RankStore {
     }
 
     let movie: LibraryMovieDTO
-    private(set) var step: Step = .pickingBucket
+    let mode: Mode
+    private(set) var step: Step
     private(set) var lastError: String?
+
+    // Captured on the date/note screen; carried through to the API call.
+    var pendingWatchedOn: Date = .now
+    var pendingNote: String = ""
 
     private let api: RankAPI
 
-    init(movie: LibraryMovieDTO, api: RankAPI = RankAPI(client: APIClient())) {
+    init(movie: LibraryMovieDTO, mode: Mode, api: RankAPI = RankAPI(client: APIClient())) {
         self.movie = movie
+        self.mode = mode
         self.api = api
+        self.step = (mode == .logWatch) ? .pickingDateNote : .pickingBucket
     }
 
     var currentOpponent: OpponentDTO? {
         if case .comparing(_, let opponent) = step { return opponent }
-        return nil
-    }
-
-    var currentSessionId: Int? {
-        if case .comparing(let id, _) = step { return id }
         return nil
     }
 
@@ -45,11 +54,20 @@ final class RankStore {
         }
     }
 
+    /// Advances past the date/note step. No-op in rerank mode.
+    func confirmDateNote() {
+        guard case .pickingDateNote = step else { return }
+        step = .pickingBucket
+    }
+
     func start(bucket: Bucket) async {
         step = .starting
         lastError = nil
+        let trimmedNote = pendingNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = (mode == .logWatch && !trimmedNote.isEmpty) ? trimmedNote : nil
+        let watchedOn = (mode == .logWatch) ? pendingWatchedOn : nil
         do {
-            let result = try await api.start(movieId: movie.id, bucket: bucket, note: nil)
+            let result = try await api.start(movieId: movie.id, bucket: bucket, note: note, watchedOn: watchedOn)
             apply(result)
         } catch {
             step = .pickingBucket

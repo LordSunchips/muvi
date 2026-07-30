@@ -66,14 +66,16 @@ class Movie(SQLModel, table=True):
         cascade_delete=True,
         sa_relationship_kwargs={"order_by": "Ranking.created_at.desc()"},
     )
-    watches: list["WatchEntry"] = Relationship(  # noqa: UP037
-        back_populates="movie",
-        cascade_delete=True,
-        sa_relationship_kwargs={"order_by": "WatchEntry.watched_on.desc()"},
-    )
 
 
 class Ranking(SQLModel, table=True):
+    """A single ranking event for a movie.
+
+    If ``watched_on`` is set, the user was logging that they watched the movie on that date
+    (a "watch"). If it's null, this was a pure re-rank — the user adjusted the movie's
+    position without logging a viewing.
+    """
+
     __tablename__ = "rankings"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -81,21 +83,10 @@ class Ranking(SQLModel, table=True):
     bucket: Bucket
     score: float
     note: str | None = None
+    watched_on: date | None = None
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
     movie: Movie = Relationship(back_populates="rankings")
-
-
-class WatchEntry(SQLModel, table=True):
-    __tablename__ = "watch_entries"
-
-    id: int | None = Field(default=None, primary_key=True)
-    movie_id: int = Field(foreign_key="movies.id", index=True, ondelete="CASCADE")
-    watched_on: date
-    note: str | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
-
-    movie: Movie = Relationship(back_populates="watches")
 
 
 class RankingSession(SQLModel, table=True):
@@ -111,4 +102,5 @@ class RankingSession(SQLModel, table=True):
     lo: int = 0
     hi: int = 0
     pending_note: str | None = None
+    pending_watched_on: date | None = None
     created_at: datetime = Field(default_factory=_utcnow)

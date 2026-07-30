@@ -1,19 +1,5 @@
 import Foundation
 
-struct WatchDTO: Codable, Hashable, Identifiable {
-    let id: Int
-    let watchedOn: Date
-    let note: String?
-    let createdAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case watchedOn = "watched_on"
-        case note
-        case createdAt = "created_at"
-    }
-}
-
 struct MovieDetailDTO: Codable, Hashable, Identifiable {
     let id: Int
     let tmdbId: Int
@@ -25,7 +11,6 @@ struct MovieDetailDTO: Codable, Hashable, Identifiable {
     let score: Double?
     let bucket: Bucket?
     let rankings: [RankingDTO]
-    let watches: [WatchDTO]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -38,7 +23,6 @@ struct MovieDetailDTO: Codable, Hashable, Identifiable {
         case score
         case bucket
         case rankings
-        case watches
     }
 
     /// Adapter used when handing the movie off to RankFlowView (which takes LibraryMovieDTO).
@@ -55,15 +39,5 @@ struct MovieDetailDTO: Codable, Hashable, Identifiable {
             bucket: bucket,
             rankingCount: rankings.count
         )
-    }
-}
-
-struct AddWatchBody: Encodable {
-    let watchedOn: Date
-    let note: String?
-
-    enum CodingKeys: String, CodingKey {
-        case watchedOn = "watched_on"
-        case note
     }
 }

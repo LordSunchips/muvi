@@ -5,8 +5,7 @@ struct MovieDetailView: View {
     let onLibraryChanged: () -> Void
 
     @State private var store: MovieDetailStore
-    @State private var isPresentingRank = false
-    @State private var isPresentingAddWatch = false
+    @State private var rankMode: RankStore.Mode?
 
     init(movieId: Int, onLibraryChanged: @escaping () -> Void) {
         self.movieId = movieId
@@ -20,19 +19,14 @@ struct MovieDetailView: View {
             .refreshable { await store.refresh() }
             .navigationTitle(store.detail?.title ?? "Loading…")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $isPresentingRank) {
+            .sheet(item: $rankMode) { mode in
                 if let detail = store.detail {
-                    RankFlowView(movie: detail.asLibraryMovie) {
+                    RankFlowView(movie: detail.asLibraryMovie, mode: mode) {
                         Task {
                             await store.refresh()
                             onLibraryChanged()
                         }
                     }
-                }
-            }
-            .sheet(isPresented: $isPresentingAddWatch) {
-                AddWatchView { date, note in
-                    await store.addWatch(on: date, note: note)
                 }
             }
             .alert(
@@ -53,8 +47,8 @@ struct MovieDetailView: View {
         if let detail = store.detail {
             List {
                 header(detail)
-                rankSection(detail)
-                watchesSection(detail)
+                actions(detail)
+                historySection(detail)
             }
             .listStyle(.insetGrouped)
         } else if store.isLoading {
@@ -99,20 +93,38 @@ struct MovieDetailView: View {
         }
     }
 
-    private func rankSection(_ detail: MovieDetailDTO) -> some View {
+    private func actions(_ detail: MovieDetailDTO) -> some View {
         Section {
             Button {
-                isPresentingRank = true
+                rankMode = .logWatch
             } label: {
-                Label(detail.rankings.isEmpty ? "Rank this movie" : "Rank again", systemImage: "arrow.up.arrow.down")
+                Label("Log a watch", systemImage: "eye")
+                    .fontWeight(.semibold)
             }
+            if !detail.rankings.isEmpty {
+                Button {
+                    rankMode = .rerank
+                } label: {
+                    Label("Re-rank without logging watch", systemImage: "arrow.up.arrow.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } footer: {
+            Text(detail.rankings.isEmpty
+                 ? "Log a watch to add this movie to your ranked list."
+                 : "Log a watch to record a viewing. Re-rank to adjust its position without logging a viewing.")
+        }
+    }
+
+    private func historySection(_ detail: MovieDetailDTO) -> some View {
+        Section {
             if detail.rankings.isEmpty {
-                Text("No rankings yet.")
+                Text("Nothing logged yet.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             } else {
                 ForEach(detail.rankings) { ranking in
-                    RankingHistoryRow(ranking: ranking)
+                    HistoryRow(ranking: ranking)
                         .swipeActions {
                             Button(role: .destructive) {
                                 Task { await store.deleteRanking(ranking) }
@@ -123,55 +135,37 @@ struct MovieDetailView: View {
                 }
             }
         } header: {
-            Text("Rank history")
+            Text("History")
         } footer: {
-            Text("Latest ranking shown at the top. Swipe left to delete.")
-        }
-    }
-
-    private func watchesSection(_ detail: MovieDetailDTO) -> some View {
-        Section {
-            Button {
-                isPresentingAddWatch = true
-            } label: {
-                Label("Log a watch", systemImage: "eye")
-            }
-            if detail.watches.isEmpty {
-                Text("No watches logged yet.")
-                    .foregroundStyle(.secondary)
-                    .font(.footnote)
-            } else {
-                ForEach(detail.watches) { watch in
-                    WatchHistoryRow(watch: watch)
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                Task { await store.deleteWatch(watch) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                }
-            }
-        } header: {
-            Text("Watch log")
+            Text("Rows with a date are watches. Rows without are re-ranks. Swipe left to delete.")
         }
     }
 }
 
-private struct RankingHistoryRow: View {
+private struct HistoryRow: View {
     let ranking: RankingDTO
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             BucketBadge(bucket: ranking.bucket)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
+                if let watchedOn = ranking.watchedOn {
+                    Text("Watched \(watchedOn.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.subheadline.weight(.semibold))
+                } else {
+                    Text("Re-ranked")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 Text(ranking.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.subheadline)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 if let note = ranking.note, !note.isEmpty {
                     Text(note)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .padding(.top, 2)
                 }
             }
             Spacer()
@@ -179,22 +173,6 @@ private struct RankingHistoryRow: View {
                 .font(.body.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(ranking.bucket.tint)
-        }
-    }
-}
-
-private struct WatchHistoryRow: View {
-    let watch: WatchDTO
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(watch.watchedOn.formatted(date: .abbreviated, time: .omitted))
-                .font(.subheadline.weight(.semibold))
-            if let note = watch.note, !note.isEmpty {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
         }
         .padding(.vertical, 2)
     }

@@ -22,6 +22,7 @@ struct RankingDTO: Codable, Hashable, Identifiable {
     let bucket: Bucket
     let score: Double
     let note: String?
+    let watchedOn: Date?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -30,6 +31,7 @@ struct RankingDTO: Codable, Hashable, Identifiable {
         case bucket
         case score
         case note
+        case watchedOn = "watched_on"
         case createdAt = "created_at"
     }
 }
@@ -48,15 +50,19 @@ struct RankStepDTO: Decodable {
     }
 }
 
+/// Encoded via the shared APIClient encoder. ``watchedOn`` is a plain ``yyyy-MM-dd`` string so it
+/// matches the backend's `date` type without pulling in a full custom encoder.
 struct RankStartRequest: Encodable {
     let movieId: Int
     let bucket: Bucket
     let note: String?
+    let watchedOn: String?
 
     enum CodingKeys: String, CodingKey {
         case movieId = "movie_id"
         case bucket
         case note
+        case watchedOn = "watched_on"
     }
 }
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ class RankStartRequest(BaseModel):
     movie_id: int
     bucket: Bucket
     note: str | None = Field(default=None, max_length=2000)
+    watched_on: date | None = None
 
 
 class OpponentOut(BaseModel):
@@ -31,6 +32,7 @@ class RankingOut(BaseModel):
     bucket: Bucket
     score: float
     note: str | None
+    watched_on: date | None
     created_at: datetime
 
 
@@ -57,6 +59,7 @@ def _ranking_out(r: Ranking) -> RankingOut:
         bucket=r.bucket,
         score=r.score,
         note=r.note,
+        watched_on=r.watched_on,
         created_at=r.created_at,
     )
 
@@ -66,7 +69,7 @@ def rank_start(payload: RankStartRequest, user: CurrentUser, session: SessionDep
     movie = session.get(Movie, payload.movie_id)
     if movie is None or movie.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found in your library")
-    result = _algorithm.start(session, user, movie, payload.bucket, payload.note)
+    result = _algorithm.start(session, user, movie, payload.bucket, payload.note, payload.watched_on)
     if result.done:
         assert result.ranking is not None
         return RankStepOut(done=True, ranking=_ranking_out(result.ranking))

@@ -27,24 +27,6 @@ final class MovieDetailStore {
         }
     }
 
-    func addWatch(on date: Date, note: String?) async {
-        do {
-            _ = try await api.addWatch(movieId: movieId, watchedOn: date, note: note)
-            await refresh()
-        } catch {
-            lastError = (error as? APIError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
-    func deleteWatch(_ watch: WatchDTO) async {
-        do {
-            try await api.deleteWatch(watchId: watch.id)
-            await refresh()
-        } catch {
-            lastError = (error as? APIError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
     func deleteRanking(_ ranking: RankingDTO) async {
         do {
             try await api.deleteRanking(rankingId: ranking.id)

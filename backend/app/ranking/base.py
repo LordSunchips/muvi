@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from typing import Protocol
 
 from sqlmodel import Session
@@ -77,6 +78,7 @@ class RankingAlgorithm(Protocol):
         movie: Movie,
         bucket: Bucket,
         note: str | None,
+        watched_on: date | None,
     ) -> StartResult: ...
 
     def compare(

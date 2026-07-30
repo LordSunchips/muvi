@@ -1,11 +1,11 @@
+"""Tests for the unified movie-detail endpoint after the watch+rank merge."""
+
 import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
-from sqlmodel import Session
 
 from app.config import get_settings
-from app.models import WatchEntry
 from app.tmdb import TMDB_BASE_URL
 
 
@@ -39,25 +39,55 @@ def _add_movie(client: TestClient, headers: dict, tmdb_id: int = 550, title: str
         return client.post("/library", json={"tmdb_id": tmdb_id}, headers=headers).json()
 
 
-def test_movie_detail_includes_rankings_and_watches(client: TestClient) -> None:
+def test_movie_detail_empty_history(client: TestClient) -> None:
     token = _token(client)
     headers = {"Authorization": f"Bearer {token}"}
     movie = _add_movie(client, headers)
-    client.post("/rank/start", json={"movie_id": movie["id"], "bucket": "loved", "note": "sick"}, headers=headers)
-    client.post(
-        f"/movies/{movie['id']}/watches",
-        json={"watched_on": "2024-05-01", "note": "with friends"},
-        headers=headers,
-    )
-
     body = client.get(f"/movies/{movie['id']}", headers=headers).json()
     assert body["title"] == "Fight Club"
-    assert body["bucket"] == "loved"
+    assert body["rankings"] == []
+    assert body["score"] is None
+    assert body["bucket"] is None
+    assert "watches" not in body
+
+
+def test_movie_detail_includes_rank_with_watched_on(client: TestClient) -> None:
+    token = _token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    movie = _add_movie(client, headers)
+    client.post(
+        "/rank/start",
+        json={"movie_id": movie["id"], "bucket": "loved", "note": "epic", "watched_on": "2024-05-01"},
+        headers=headers,
+    )
+    body = client.get(f"/movies/{movie['id']}", headers=headers).json()
     assert len(body["rankings"]) == 1
-    assert body["rankings"][0]["note"] == "sick"
-    assert len(body["watches"]) == 1
-    assert body["watches"][0]["watched_on"] == "2024-05-01"
-    assert body["watches"][0]["note"] == "with friends"
+    row = body["rankings"][0]
+    assert row["bucket"] == "loved"
+    assert row["note"] == "epic"
+    assert row["watched_on"] == "2024-05-01"
+
+
+def test_movie_detail_distinguishes_rerank_from_watch(client: TestClient) -> None:
+    token = _token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    movie = _add_movie(client, headers)
+    # A watch (watched_on set)
+    client.post(
+        "/rank/start",
+        json={"movie_id": movie["id"], "bucket": "loved", "watched_on": "2024-05-01"},
+        headers=headers,
+    )
+    # A pure re-rank (no watched_on)
+    client.post(
+        "/rank/start",
+        json={"movie_id": movie["id"], "bucket": "loved"},
+        headers=headers,
+    )
+    body = client.get(f"/movies/{movie['id']}", headers=headers).json()
+    assert len(body["rankings"]) == 2
+    watched_ons = [r["watched_on"] for r in body["rankings"]]
+    assert set(watched_ons) == {"2024-05-01", None}
 
 
 def test_movie_detail_rejects_other_users_movie(client: TestClient) -> None:
@@ -65,61 +95,4 @@ def test_movie_detail_rejects_other_users_movie(client: TestClient) -> None:
     token_b = _token(client, "b@example.com")
     movie = _add_movie(client, {"Authorization": f"Bearer {token_a}"})
     response = client.get(f"/movies/{movie['id']}", headers={"Authorization": f"Bearer {token_b}"})
-    assert response.status_code == 404
-
-
-def test_add_watch_returns_entry(client: TestClient) -> None:
-    token = _token(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    movie = _add_movie(client, headers)
-    response = client.post(
-        f"/movies/{movie['id']}/watches",
-        json={"watched_on": "2024-05-01", "note": "hi"},
-        headers=headers,
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["watched_on"] == "2024-05-01"
-    assert body["note"] == "hi"
-    assert body["id"] > 0
-
-
-def test_add_watch_rejects_other_users_movie(client: TestClient) -> None:
-    token_a = _token(client, "a@example.com")
-    token_b = _token(client, "b@example.com")
-    movie = _add_movie(client, {"Authorization": f"Bearer {token_a}"})
-    response = client.post(
-        f"/movies/{movie['id']}/watches",
-        json={"watched_on": "2024-05-01"},
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    assert response.status_code == 404
-
-
-def test_delete_watch_removes_row(client: TestClient, session: Session) -> None:
-    token = _token(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    movie = _add_movie(client, headers)
-    watch = client.post(
-        f"/movies/{movie['id']}/watches",
-        json={"watched_on": "2024-05-01"},
-        headers=headers,
-    ).json()
-
-    response = client.delete(f"/watches/{watch['id']}", headers=headers)
-    assert response.status_code == 204
-    assert session.get(WatchEntry, watch["id"]) is None
-
-
-def test_delete_watch_rejects_other_user(client: TestClient) -> None:
-    token_a = _token(client, "a@example.com")
-    token_b = _token(client, "b@example.com")
-    headers_a = {"Authorization": f"Bearer {token_a}"}
-    movie = _add_movie(client, headers_a)
-    watch = client.post(
-        f"/movies/{movie['id']}/watches",
-        json={"watched_on": "2024-05-01"},
-        headers=headers_a,
-    ).json()
-    response = client.delete(f"/watches/{watch['id']}", headers={"Authorization": f"Bearer {token_b}"})
     assert response.status_code == 404

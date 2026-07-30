@@ -4,7 +4,7 @@ struct LibraryView: View {
     @Environment(AuthStore.self) private var auth
     @State private var library = LibraryStore()
     @State private var isPresentingAdd = false
-    @State private var rankingMovie: LibraryMovieDTO?
+    @State private var isPresentingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -20,11 +20,12 @@ struct LibraryView: View {
                         .accessibilityLabel("Add movie")
                     }
                     ToolbarItem(placement: .topBarLeading) {
-                        Menu {
-                            Button("Log out", role: .destructive) { auth.logout() }
+                        Button {
+                            isPresentingSettings = true
                         } label: {
                             Image(systemName: "person.crop.circle")
                         }
+                        .accessibilityLabel("Settings")
                     }
                 }
                 .refreshable { await library.refresh() }
@@ -34,8 +35,8 @@ struct LibraryView: View {
                         await library.add(tmdbId: tmdbId)
                     }
                 }
-                .sheet(item: $rankingMovie) { movie in
-                    RankFlowView(movie: movie) {
+                .sheet(isPresented: $isPresentingSettings) {
+                    SettingsView {
                         Task { await library.refresh() }
                     }
                 }
@@ -58,24 +59,23 @@ struct LibraryView: View {
             emptyState
         } else {
             List(library.movies) { movie in
-                LibraryRow(movie: movie)
-                    .contentShape(Rectangle())
-                    .onTapGesture { rankingMovie = movie }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            Task { await library.remove(movie) }
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                        Button {
-                            rankingMovie = movie
-                        } label: {
-                            Label("Rank", systemImage: "arrow.up.arrow.down")
-                        }
-                        .tint(.accentColor)
+                NavigationLink(value: movie.id) {
+                    LibraryRow(movie: movie)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        Task { await library.remove(movie) }
+                    } label: {
+                        Label("Remove", systemImage: "trash")
                     }
+                }
             }
             .listStyle(.plain)
+            .navigationDestination(for: Int.self) { movieId in
+                MovieDetailView(movieId: movieId) {
+                    Task { await library.refresh() }
+                }
+            }
         }
     }
 
@@ -95,4 +95,3 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-

@@ -113,6 +113,12 @@ struct APIClient {
         return try await send(try makeRequest(method: "POST", path: path, body: data))
     }
 
+    /// Escape hatch for callers that need to encode the body with a bespoke encoder
+    /// (e.g. plain-date fields).
+    func postRaw<Response: Decodable>(_ path: String, body: Data) async throws -> Response {
+        try await send(try makeRequest(method: "POST", path: path, body: body))
+    }
+
     func patch<Body: Encodable, Response: Decodable>(_ path: String, body: Body) async throws -> Response {
         let data = try Self.encoder.encode(body)
         return try await send(try makeRequest(method: "PATCH", path: path, body: data))
@@ -149,6 +155,7 @@ struct APIClient {
             return data
         case 401:
             tokenStore.token = nil
+            NotificationCenter.default.post(name: .muviSessionExpired, object: nil)
             throw APIError.unauthorized
         default:
             let detail = try? Self.decoder.decode(APIErrorBody.self, from: data).detail?.display
@@ -158,3 +165,9 @@ struct APIClient {
 }
 
 struct EmptyResponse: Decodable {}
+
+extension Notification.Name {
+    /// Fired by ``APIClient`` when a 401 clears the stored token. Observed by ``AuthStore`` to
+    /// drop the app back to the login screen.
+    static let muviSessionExpired = Notification.Name("com.muvi.sessionExpired")
+}

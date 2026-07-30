@@ -21,6 +21,21 @@ final class AuthStore {
         self.api = api
         self.tokenStore = tokenStore
         self.isAuthenticated = tokenStore.token != nil
+        NotificationCenter.default.addObserver(
+            forName: .muviSessionExpired,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.handleSessionExpired() }
+        }
+    }
+
+    private func handleSessionExpired() {
+        // APIClient already cleared the token; mirror that in the observable state so the shell
+        // routes us back to the auth gate. Avoid double-logging the reason as an alert; the caller
+        // (e.g. LibraryStore) surfaces the underlying error separately.
+        currentUser = nil
+        isAuthenticated = false
     }
 
     func signup(email: String, password: String) async {

@@ -17,6 +17,7 @@ class GenreOut(BaseModel):
 
 class RankingOut(BaseModel):
     id: int
+    movie_id: int
     bucket: Bucket
     score: float
     note: str | None
@@ -82,7 +83,14 @@ def movie_detail(movie_id: int, user: CurrentUser, session: SessionDep) -> Movie
         score=score,
         bucket=latest.bucket if latest is not None else None,
         rankings=[
-            RankingOut(id=r.id, bucket=r.bucket, score=r.score, note=r.note, created_at=r.created_at)  # type: ignore[arg-type]
+            RankingOut(
+                id=r.id,  # type: ignore[arg-type]
+                movie_id=r.movie_id,
+                bucket=r.bucket,
+                score=r.score,
+                note=r.note,
+                created_at=r.created_at,
+            )
             for r in rankings
         ],
         watches=[

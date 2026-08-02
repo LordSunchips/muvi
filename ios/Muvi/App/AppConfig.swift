@@ -18,6 +18,6 @@ enum AppConfig {
     #if DEBUG
     private static let defaultBaseURL = "http://127.0.0.1:8000"
     #else
-    private static let defaultBaseURL = "https://muvi-backend.fly.dev"
+    private static let defaultBaseURL = "https://sunchips-muvi.fly.dev"
     #endif
 }

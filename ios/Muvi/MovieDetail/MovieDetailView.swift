@@ -8,6 +8,8 @@ struct MovieDetailView: View {
     /// Simultaneous state: which rank flow (if any) is presented, and — when a per-genre re-rank
     /// is chosen — which genre it's scoped to. Wrapped so `.sheet(item:)` can drive it.
     @State private var rankPresentation: RankPresentation?
+    /// Ranking currently being edited via the EditRankingView sheet.
+    @State private var editingRanking: RankingDTO?
 
     struct RankPresentation: Identifiable {
         let mode: RankStore.Mode
@@ -39,6 +41,18 @@ struct MovieDetailView: View {
                             onLibraryChanged()
                         }
                     }
+                }
+            }
+            .sheet(item: $editingRanking) { ranking in
+                EditRankingView(ranking: ranking) { note, watchedOn, clearWatchedOn in
+                    let ok = await store.updateRanking(
+                        ranking,
+                        note: note,
+                        watchedOn: watchedOn,
+                        clearWatchedOn: clearWatchedOn
+                    )
+                    if ok { onLibraryChanged() }
+                    return ok
                 }
             }
             .alert(
@@ -149,20 +163,31 @@ struct MovieDetailView: View {
                     .font(.footnote)
             } else {
                 ForEach(detail.rankings) { ranking in
-                    HistoryRow(ranking: ranking, genreLookup: genreLookup)
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                Task { await store.deleteRanking(ranking) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    Button {
+                        editingRanking = ranking
+                    } label: {
+                        HistoryRow(ranking: ranking, genreLookup: genreLookup)
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            Task { await store.deleteRanking(ranking) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
+                        Button {
+                            editingRanking = ranking
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.accentColor)
+                    }
                 }
             }
         } header: {
             Text("History")
         } footer: {
-            Text("Rows with a date are watches. Rows without are re-ranks. Genre-scoped ranks show a tag. Swipe left to delete.")
+            Text("Rows with a date are watches. Rows without are re-ranks. Tap a row to edit its date and notes, swipe left to delete.")
         }
     }
 }

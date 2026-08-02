@@ -124,6 +124,12 @@ struct APIClient {
         return try await send(try makeRequest(method: "PATCH", path: path, body: data))
     }
 
+    /// Escape hatch mirroring `postRaw` for callers that need to send an already-encoded body
+    /// (e.g. so JSON `null` values can be sent explicitly, which Swift's default encoder skips).
+    func patchRaw<Response: Decodable>(_ path: String, body: Data) async throws -> Response {
+        try await send(try makeRequest(method: "PATCH", path: path, body: body))
+    }
+
     func delete(_ path: String) async throws {
         _ = try await sendRaw(try makeRequest(method: "DELETE", path: path))
     }

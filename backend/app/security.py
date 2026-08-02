@@ -45,5 +45,5 @@ def decode_access_token(token: str) -> int | None:
         return None
     try:
         return int(sub)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None

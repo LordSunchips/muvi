@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
     database_url: str = "sqlite:///./muvi.db"
+    # Turso/libSQL auth token. Kept separate from database_url so the credential stays out of
+    # connection strings (which land in logs and tracebacks). A token embedded in database_url's
+    # query string still works as a fallback — see app.db.engine_args.
+    turso_auth_token: str = ""
 
 
 @lru_cache

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.config import get_settings
-from app.models import Movie, Ranking
+from app.models import Ranking
 from app.ranking.base import BUCKET_BANDS, Bucket
 from app.tmdb import TMDB_BASE_URL
 
@@ -148,9 +148,7 @@ def test_new_top_ranking_wins_score_tie_over_existing_top(client: TestClient, se
 
     # Insert C and pick "C is better than A" — C should end up on top.
     s = client.post("/rank/start", json={"movie_id": c["id"], "bucket": "fine"}, headers=headers).json()
-    step = client.post(
-        f"/rank/{s['session_id']}/compare", json={"winner_movie_id": c["id"]}, headers=headers
-    ).json()
+    step = client.post(f"/rank/{s['session_id']}/compare", json={"winner_movie_id": c["id"]}, headers=headers).json()
     # If more compares are needed (against B), keep C winning too.
     while not step["done"]:
         step = client.post(

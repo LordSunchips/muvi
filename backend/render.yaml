@@ -17,4 +17,6 @@ services:
       - key: JWT_SECRET
         generateValue: true    # Render generates a strong value on first deploy.
       - key: DATABASE_URL
-        sync: false            # e.g. sqlite+libsql://<host>?authToken=<token>&secure=true
+        sync: false            # e.g. sqlite+libsql://<host>?secure=true  (no token — see below)
+      - key: TURSO_AUTH_TOKEN
+        sync: false            # the Turso database token, kept out of the connection string.

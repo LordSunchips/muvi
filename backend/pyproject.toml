@@ -1,6 +1,6 @@
 [project]
 name = "muvi-backend"
-version = "0.1.0"
+version = "0.1.1"
 description = "Backend for the muvi movie-ranking app"
 requires-python = ">=3.14"
 dependencies = [
@@ -16,6 +16,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Bundled into the production image (see Dockerfile) so Turso is available when DATABASE_URL is
+# `sqlite+libsql://…`. Kept out of the base deps because the libsql wheel doesn't build on every
+# Python patch version and local dev uses plain SQLite.
+turso = [
+    "sqlalchemy-libsql>=0.1.0",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

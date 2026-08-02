@@ -1,61 +1,80 @@
-# Deploying muvi backend to Fly.io
+# Deploying the muvi backend (Render + Turso, always-free)
 
-This spins up a small VM running the FastAPI app with SQLite on a persistent Fly volume.
+The API runs on **Render.com**'s free web-service tier and reads/writes a hosted-SQLite database
+on **Turso** (libSQL). Both have permanent free tiers — no billing card required — as long as
+you stay inside the free quotas.
 
-## Prerequisites
+Render free plan quirks to be aware of:
 
-- Install the Fly CLI (`brew install flyctl`) and sign up: `fly auth signup`.
-- A TMDB API key and a JWT signing secret (any long random string).
-- Docker installed locally is **not required** — Fly builds the image remotely by default.
+- Service spins down after ~15 minutes of inactivity. First request after that pays a ~30s
+  cold-start; subsequent requests are fast.
+- Filesystem is ephemeral (wiped on every deploy). All persistent state lives in Turso.
 
-## First-time deploy
-
-Pick a globally-unique app name (Fly enforces uniqueness). Replace `<APP>` and `<REGION>` (see
-`fly platform regions`; `iad`, `sea`, `sjc` are common) below.
+## 1. Create the Turso database
 
 ```bash
-cd backend
-
-# Edit fly.toml: change `app = "muvi-backend"` to `app = "<APP>"`.
-
-fly launch --no-deploy --copy-config --name <APP>
-fly volumes create muvi_data --size 1 --region <REGION>
-fly secrets set TMDB_API_KEY=your_tmdb_key \
-                JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-fly deploy
+brew install tursodatabase/tap/turso
+turso auth signup     # first-time only
+turso db create muvi
+turso db show muvi --url
+turso db tokens create muvi
 ```
 
-Your API is now at `https://<APP>.fly.dev`. Sanity check:
+Combine the URL and token into a SQLAlchemy-compatible URL:
+
+```
+sqlite+libsql://<host>?authToken=<token>&secure=true
+```
+
+`<host>` is the hostname from `db show --url` (drop the `libsql://` prefix). Keep the full
+string handy for the Render step.
+
+## 2. Deploy the API on Render
+
+1. Sign in at https://render.com with the GitHub account that owns this repo and connect it.
+2. **New +** → **Blueprint** → pick this repo. Render reads
+   [`backend/render.yaml`](./render.yaml) and provisions one free web service.
+3. When Render prompts for secrets, paste:
+   - `TMDB_API_KEY` — your TMDB v3 API key.
+   - `DATABASE_URL` — the `sqlite+libsql://...` string from step 1.
+   - (`JWT_SECRET` is generated automatically.)
+4. Click **Apply**. First build takes ~4 minutes; watch the deploy log until it says "Live".
+
+Your API is now at `https://muvi-backend.onrender.com` (or whatever name Render assigned;
+check the dashboard). Sanity check:
 
 ```bash
-curl https://<APP>.fly.dev/health
+curl https://<your-service>.onrender.com/health
 # {"status":"ok"}
 ```
 
-Open the docs at `https://<APP>.fly.dev/docs`.
+Interactive docs at `https://<your-service>.onrender.com/docs`.
 
 ## Redeploying after code changes
 
-```bash
-cd backend && fly deploy
-```
-
-## Cost
-
-The `fly.toml` here uses one shared-cpu-1x / 256 MB machine and a 1 GB volume. With
-`auto_stop_machines = "stop"` set, the VM sleeps when idle and cold-starts on the next request
-(~1–2 seconds). Fits inside Fly's minimal allowance for a personal app; watch billing at
-https://fly.io/dashboard.
-
-## Backups
-
-The SQLite DB lives at `/data/muvi.db` on the volume. Quick backup:
-
-```bash
-fly ssh console -C "cat /data/muvi.db" > muvi-backup-$(date +%Y%m%d).db
-```
+Render auto-deploys on every push to the tracked branch. To force one from the dashboard:
+**Manual Deploy** → **Deploy latest commit**.
 
 ## Point the iOS app at prod
 
-In Xcode, edit `ios/Muvi/App/AppConfig.swift` and set the base URL to your Fly URL, or set the
-`MUVI_API_BASE_URL` build setting on the scheme (see the file for details).
+In `ios/Muvi/App/AppConfig.swift`, set the release-config `defaultBaseURL` to your Render URL.
+Alternatively, set `MUVI_API_BASE_URL` as an Info.plist entry (per configuration) or as a
+scheme env var — see the file for the resolution order.
+
+## Backups
+
+`turso db shell muvi ".dump" > muvi-backup-$(date +%Y%m%d).sql`
+
+Restore into a fresh DB with `turso db shell <new-db> < muvi-backup-<date>.sql`.
+
+## Migrating from a previous Fly.io deploy
+
+If you were on the old Fly setup, pull the SQLite file down, dump it, and import to Turso:
+
+```bash
+fly ssh console -a <old-fly-app> -C "cat /data/muvi.db" > muvi-old.db
+sqlite3 muvi-old.db .dump > muvi-old.sql
+turso db shell muvi < muvi-old.sql
+```
+
+Then destroy the Fly app (`fly apps destroy <old-fly-app>`) to stop any lingering charges.

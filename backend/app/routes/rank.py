@@ -49,6 +49,15 @@ class RankCompareRequest(BaseModel):
     winner_movie_id: int
 
 
+class RankingUpdateRequest(BaseModel):
+    """PATCH body for editing a logged watch. Both fields are full-replacement: send the value
+    you want stored (or null to clear). Fields omitted from the body are left unchanged.
+    """
+
+    note: str | None = Field(default=None, max_length=2000)
+    watched_on: date | None = None
+
+
 def _opponent_out(op: OpponentInfo) -> OpponentOut:
     return OpponentOut(movie_id=op.movie_id, title=op.title, year=op.year, poster_path=op.poster_path)
 
@@ -104,6 +113,32 @@ def rank_compare(session_id: int, payload: RankCompareRequest, user: CurrentUser
         return RankStepOut(done=True, ranking=_ranking_out(result.ranking))
     assert result.opponent is not None
     return RankStepOut(done=False, session_id=session_id, opponent=_opponent_out(result.opponent))
+
+
+@router.patch("/rankings/{ranking_id}", response_model=RankingOut)
+def update_ranking(
+    ranking_id: int, payload: RankingUpdateRequest, user: CurrentUser, session: SessionDep
+) -> RankingOut:
+    """Edit a ranking's captured watch metadata (note and/or watched_on).
+
+    Bucket, score, and genre scope are intentionally NOT editable here — changing those means
+    re-running the ranking flow so the algorithm can re-place the movie against its peers.
+    """
+    ranking = session.get(Ranking, ranking_id)
+    if ranking is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ranking not found")
+    movie = session.get(Movie, ranking.movie_id)
+    if movie is None or movie.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ranking not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if "note" in updates:
+        ranking.note = updates["note"] or None
+    if "watched_on" in updates:
+        ranking.watched_on = updates["watched_on"]
+    session.add(ranking)
+    session.commit()
+    session.refresh(ranking)
+    return _ranking_out(ranking)
 
 
 @router.delete("/rankings/{ranking_id}", status_code=status.HTTP_204_NO_CONTENT)

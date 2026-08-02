@@ -1,0 +1,20 @@
+# Render.com Blueprint. Deploy with the Render dashboard's "New +" → "Blueprint" flow, pointing
+# at this repo. Free plan spins the service down after 15 minutes of inactivity; the first request
+# after that pays a cold-start (~30s). Data lives in Turso (see DEPLOY.md), so the ephemeral
+# filesystem on the free plan is fine.
+services:
+  - type: web
+    name: muvi-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: TMDB_API_KEY
+        sync: false            # set in the Render dashboard, not committed to git.
+      - key: JWT_SECRET
+        generateValue: true    # Render generates a strong value on first deploy.
+      - key: DATABASE_URL
+        sync: false            # e.g. sqlite+libsql://<host>?authToken=<token>&secure=true

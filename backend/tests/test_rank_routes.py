@@ -132,6 +132,107 @@ def test_delete_ranking_removes_row(client: TestClient, session: Session) -> Non
     assert session.get(Ranking, ranking_id) is None
 
 
+def test_patch_ranking_updates_note_and_watched_on(client: TestClient, session: Session) -> None:
+    token = _auth_token(client)
+    from app.security import decode_access_token
+
+    user_id = decode_access_token(token)
+    assert user_id is not None
+    headers = {"Authorization": f"Bearer {token}"}
+    movie = _add_movie(session, user_id, tmdb_id=1, title="A")
+    start = client.post(
+        "/rank/start",
+        json={"movie_id": movie.id, "bucket": "loved", "note": "first take", "watched_on": "2025-01-01"},
+        headers=headers,
+    ).json()
+    ranking_id = start["ranking"]["id"]
+
+    response = client.patch(
+        f"/rankings/{ranking_id}",
+        json={"note": "changed my mind", "watched_on": "2025-06-15"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["note"] == "changed my mind"
+    assert body["watched_on"] == "2025-06-15"
+
+
+def test_patch_ranking_can_clear_watched_on_and_note(client: TestClient, session: Session) -> None:
+    token = _auth_token(client)
+    from app.security import decode_access_token
+
+    user_id = decode_access_token(token)
+    assert user_id is not None
+    headers = {"Authorization": f"Bearer {token}"}
+    movie = _add_movie(session, user_id, tmdb_id=1, title="A")
+    start = client.post(
+        "/rank/start",
+        json={"movie_id": movie.id, "bucket": "loved", "note": "temp", "watched_on": "2025-01-01"},
+        headers=headers,
+    ).json()
+    ranking_id = start["ranking"]["id"]
+
+    response = client.patch(
+        f"/rankings/{ranking_id}",
+        json={"note": None, "watched_on": None},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["note"] is None
+    assert body["watched_on"] is None
+
+
+def test_patch_ranking_partial_leaves_other_field_untouched(client: TestClient, session: Session) -> None:
+    token = _auth_token(client)
+    from app.security import decode_access_token
+
+    user_id = decode_access_token(token)
+    assert user_id is not None
+    headers = {"Authorization": f"Bearer {token}"}
+    movie = _add_movie(session, user_id, tmdb_id=1, title="A")
+    start = client.post(
+        "/rank/start",
+        json={"movie_id": movie.id, "bucket": "loved", "note": "keep me", "watched_on": "2025-01-01"},
+        headers=headers,
+    ).json()
+    ranking_id = start["ranking"]["id"]
+
+    response = client.patch(
+        f"/rankings/{ranking_id}",
+        json={"watched_on": "2025-02-02"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["note"] == "keep me"
+    assert body["watched_on"] == "2025-02-02"
+
+
+def test_patch_ranking_rejects_other_users(client: TestClient, session: Session) -> None:
+    token_a = _auth_token(client, "a@example.com")
+    token_b = _auth_token(client, "b@example.com")
+    from app.security import decode_access_token
+
+    user_a_id = decode_access_token(token_a)
+    assert user_a_id is not None
+    movie = _add_movie(session, user_a_id, tmdb_id=1, title="A")
+    start = client.post(
+        "/rank/start",
+        json={"movie_id": movie.id, "bucket": "loved"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()
+    ranking_id = start["ranking"]["id"]
+
+    response = client.patch(
+        f"/rankings/{ranking_id}",
+        json={"note": "sneaky"},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_delete_ranking_rejects_other_users(client: TestClient, session: Session) -> None:
     token_a = _auth_token(client, "a@example.com")
     token_b = _auth_token(client, "b@example.com")

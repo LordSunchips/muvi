@@ -5,11 +5,12 @@ expire after 7 days; you re-run from Xcode weekly to refresh.
 
 ## One-time setup
 
-1. **Deploy the backend** first (see `../backend/DEPLOY.md`). You need the production URL.
+1. **Deploy the backend** first (see `../backend/DEPLOY.md` — free Render + Turso setup). You
+   need the production URL that flow gives you.
 2. **Point the release build at prod.** In `Muvi/App/AppConfig.swift`, update the release URL:
    ```swift
    #else
-   private static let defaultBaseURL = "https://YOUR-APP.fly.dev"
+   private static let defaultBaseURL = "https://YOUR-APP.onrender.com"
    #endif
    ```
    (Debug builds still target `127.0.0.1:8000` so simulator dev keeps working.)
@@ -53,7 +54,8 @@ or greys out on the home screen. Plug back into Xcode and Command-R — it re-si
 
 - **"Could not locate device support files"**: Xcode is missing the platform for your iOS version.
   Xcode → Settings → Platforms → download the matching iOS.
-- **App fails to fetch on device but works in simulator**: your Fly URL is unreachable or the
+- **App fails to fetch on device but works in simulator**: your Render URL is unreachable (or
+  the free service is cold-starting — first request after ~15 min idle takes ~30s), or the
   Release config still points at localhost. Check `AppConfig.swift`.
 - **"No matching profiles found"**: In Signing & Capabilities, uncheck and re-check "Automatically
   manage signing".

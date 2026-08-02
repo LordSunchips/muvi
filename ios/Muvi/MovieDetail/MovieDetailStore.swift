@@ -36,5 +36,28 @@ final class MovieDetailStore {
         }
     }
 
+    /// Edit a ranking's captured note and/or watch date. `clearWatchedOn == true` sends null so
+    /// the server drops the date; `false` with `watchedOn == nil` leaves the field unchanged.
+    func updateRanking(
+        _ ranking: RankingDTO,
+        note: String?,
+        watchedOn: Date?,
+        clearWatchedOn: Bool
+    ) async -> Bool {
+        do {
+            _ = try await api.updateRanking(
+                rankingId: ranking.id,
+                note: note,
+                watchedOn: watchedOn,
+                clearWatchedOn: clearWatchedOn
+            )
+            await refresh()
+            return true
+        } catch {
+            lastError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
     func clearError() { lastError = nil }
 }

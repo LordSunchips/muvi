@@ -8,13 +8,19 @@ from app.config import get_settings
 
 settings = get_settings()
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+def _is_local_sqlite(url: str) -> bool:
+    """True for on-disk / in-memory SQLite. Turso's `sqlite+libsql://` and `libsql://` are
+    remote and shouldn't share sqlite's connect_args or pragma handling."""
+    return url.startswith("sqlite:") and "libsql" not in url
+
+
+connect_args = {"check_same_thread": False} if _is_local_sqlite(settings.database_url) else {}
 engine = create_engine(settings.database_url, echo=False, connect_args=connect_args)
 
 
 @event.listens_for(Engine, "connect")
 def _sqlite_pragmas(dbapi_connection, connection_record) -> None:  # noqa: ARG001
-    if settings.database_url.startswith("sqlite"):
+    if _is_local_sqlite(settings.database_url):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()

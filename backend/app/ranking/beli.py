@@ -74,20 +74,77 @@ def _finalize(
     watched_on: date | None,
     genre_id: int | None,
 ) -> Ranking:
-    score = score_for_position(position, total, bucket)
+    # Placeholder score; `_rebalance_after_insertion` sets the real value below. Setting it via
+    # `score_for_position(position, total, ...)` here would work but risks producing a score that
+    # ties an existing bucket member's score — then the position-blind sort inside a naive
+    # score-based rebalance could reorder them the wrong way. Insertion-position is the source
+    # of truth, so we hand it to the rebalance directly.
     ranking = Ranking(
         movie_id=movie.id,  # type: ignore[arg-type]
         bucket=bucket,
-        score=score,
+        score=score_for_position(position, total, bucket),
         note=note,
         watched_on=watched_on,
         genre_id=genre_id,
     )
     session.add(ranking)
     session.commit()
-    _rebalance_bucket_scores(session, movie.user_id, bucket, genre_id)
+    session.refresh(ranking)
+    _rebalance_after_insertion(session, movie.user_id, bucket, genre_id, ranking, position)
     session.refresh(ranking)
     return ranking
+
+
+def _latest_rankings_in_bucket(
+    session: Session,
+    user_id: int,
+    bucket: Bucket,
+    genre_id: int | None,
+) -> list[Ranking]:
+    """Latest in-scope rankings currently in ``bucket`` for ``user_id``."""
+    movies = session.exec(select(Movie).where(Movie.user_id == user_id)).all()
+    out: list[Ranking] = []
+    for movie in movies:
+        if genre_id is not None and not any(g.get("id") == genre_id for g in movie.genres):
+            continue
+        latest = _latest_ranking_in_scope(session, movie.id, genre_id)  # type: ignore[arg-type]
+        if latest is None or latest.bucket != bucket:
+            continue
+        out.append(latest)
+    return out
+
+
+def _write_positions(session: Session, ordered: list[Ranking], bucket: Bucket) -> None:
+    """Assign scores to ``ordered`` (best-first) so they span the bucket band evenly."""
+    total = len(ordered)
+    for i, ranking in enumerate(ordered):
+        new_score = score_for_position(i, total, bucket)
+        if ranking.score != new_score:
+            ranking.score = new_score
+            session.add(ranking)
+    session.commit()
+
+
+def _rebalance_after_insertion(
+    session: Session,
+    user_id: int,
+    bucket: Bucket,
+    genre_id: int | None,
+    new_ranking: Ranking,
+    position: int,
+) -> None:
+    """Place ``new_ranking`` at ``position`` in the bucket and re-space every latest score.
+
+    The binary search decided ``position`` from the user's compare answers; the rebalance must
+    honor that instead of re-deriving order from scores. If ``score_for_position`` happens to
+    hand the new ranking the same value as an existing bucket member's score, a score-based sort
+    could reorder the two — the user just told us which is better, so we skip that sort entirely.
+    """
+    latest = _latest_rankings_in_bucket(session, user_id, bucket, genre_id)
+    existing = [r for r in latest if r.id != new_ranking.id]
+    existing.sort(key=lambda r: r.score, reverse=True)
+    ordered = existing[:position] + [new_ranking] + existing[position:]
+    _write_positions(session, ordered, bucket)
 
 
 def _rebalance_bucket_scores(
@@ -98,34 +155,18 @@ def _rebalance_bucket_scores(
 ) -> None:
     """Re-space scores of the LATEST in-scope rankings for movies in ``bucket``.
 
-    Beli's mental model: a movie's score reflects its current position in the bucket relative to
-    the other movies in it. When a new movie is inserted or an existing one is removed, the other
-    movies' scores need to move so they stay evenly distributed across the bucket's score band.
+    Used after a deletion: sorts by current score and redistributes. Insertion has its own
+    position-aware path (`_rebalance_after_insertion`) so that a new ranking with a score that
+    ties an existing member doesn't get swapped around by a score-based sort.
 
     Only the latest ranking per movie is touched — older ranking rows keep their historical scores
     so mean/median metrics still see the full history.
     """
-    movies = session.exec(select(Movie).where(Movie.user_id == user_id)).all()
-    latest_rankings: list[Ranking] = []
-    for movie in movies:
-        if genre_id is not None and not any(g.get("id") == genre_id for g in movie.genres):
-            continue
-        latest = _latest_ranking_in_scope(session, movie.id, genre_id)  # type: ignore[arg-type]
-        if latest is None or latest.bucket != bucket:
-            continue
-        latest_rankings.append(latest)
-
+    latest_rankings = _latest_rankings_in_bucket(session, user_id, bucket, genre_id)
     if not latest_rankings:
         return
-
     latest_rankings.sort(key=lambda r: r.score, reverse=True)
-    total = len(latest_rankings)
-    for i, ranking in enumerate(latest_rankings):
-        new_score = score_for_position(i, total, bucket)
-        if ranking.score != new_score:
-            ranking.score = new_score
-            session.add(ranking)
-    session.commit()
+    _write_positions(session, latest_rankings, bucket)
 
 
 class BeliRanking(RankingAlgorithm):

@@ -126,6 +126,43 @@ def test_deleting_ranking_rebalances_bucket(client: TestClient, session: Session
     assert _latest_score(session, c["id"]) == pytest.approx(low)
 
 
+def test_new_top_ranking_wins_score_tie_over_existing_top(client: TestClient, session: Session) -> None:
+    """Regression: when the newly-inserted movie's score ties the old top's score, the newer
+    ranking must take the better slot after rebalance. Reported on the Fine tier — a new movie
+    the user just picked as "better" was ending up with a lower score than its opponent because
+    the stable sort was preserving the older movie's position on ties."""
+    token = _token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    a = _add(client, headers, 1, "A")
+    b = _add(client, headers, 2, "B")
+    c = _add(client, headers, 3, "C")
+
+    # Seed the FINE bucket with A best and B worst. After this A=6.6, B=3.4.
+    client.post("/rank/start", json={"movie_id": a["id"], "bucket": "fine"}, headers=headers)
+    s = client.post("/rank/start", json={"movie_id": b["id"], "bucket": "fine"}, headers=headers).json()
+    client.post(f"/rank/{s['session_id']}/compare", json={"winner_movie_id": a["id"]}, headers=headers)
+
+    session.expire_all()
+    low, high = BUCKET_BANDS[Bucket.FINE]
+    assert _latest_score(session, a["id"]) == pytest.approx(high)
+
+    # Insert C and pick "C is better than A" — C should end up on top.
+    s = client.post("/rank/start", json={"movie_id": c["id"], "bucket": "fine"}, headers=headers).json()
+    step = client.post(
+        f"/rank/{s['session_id']}/compare", json={"winner_movie_id": c["id"]}, headers=headers
+    ).json()
+    # If more compares are needed (against B), keep C winning too.
+    while not step["done"]:
+        step = client.post(
+            f"/rank/{s['session_id']}/compare", json={"winner_movie_id": c["id"]}, headers=headers
+        ).json()
+
+    session.expire_all()
+    assert _latest_score(session, c["id"]) == pytest.approx(high), "newly-ranked top movie should get the band max"
+    assert _latest_score(session, a["id"]) < high, "the displaced old top should drop below the band max"
+    assert _latest_score(session, b["id"]) == pytest.approx(low)
+
+
 def test_rebalance_only_touches_latest_ranking(client: TestClient, session: Session) -> None:
     """Old ranking rows keep their historical scores so mean/median metrics see the full history."""
     token = _token(client)

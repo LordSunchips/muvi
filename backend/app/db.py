@@ -8,6 +8,7 @@ from app.config import get_settings
 
 settings = get_settings()
 
+
 def _is_local_sqlite(url: str) -> bool:
     """True for on-disk / in-memory SQLite. Turso's `sqlite+libsql://` and `libsql://` are
     remote and shouldn't share sqlite's connect_args or pragma handling."""

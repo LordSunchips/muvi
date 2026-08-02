@@ -2,7 +2,9 @@
 name = "muvi-backend"
 version = "0.1.1"
 description = "Backend for the muvi movie-ranking app"
-requires-python = ">=3.14"
+# >=3.13 (not 3.14) so the production image can run 3.13, where the [turso] extra's libsql
+# driver has prebuilt wheels. Local dev still resolves to whatever >=3.13 you have installed.
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -38,7 +40,10 @@ packages = ["app"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
+# Match requires-python's floor, not the local interpreter. If this says py314, ruff's pyupgrade
+# rules may rewrite code into 3.14-only syntax (e.g. PEP 758 unparenthesized `except A, B:`),
+# which then fails to build on the 3.13 production image.
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [

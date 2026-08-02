@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     yield
 
 
-app = FastAPI(title="muvi", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="muvi", version="0.1.1", lifespan=lifespan)
 
 app.include_router(auth_routes.router)
 app.include_router(tmdb_routes.router)

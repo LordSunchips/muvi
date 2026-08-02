@@ -32,8 +32,9 @@ final class RankStore {
     private(set) var step: Step
     private(set) var lastError: String?
 
-    // Captured on the date/note screen; carried through to the API call.
-    var pendingWatchedOn: Date = .now
+    // Captured on the date/note screen; carried through to the API call. `nil` for the watch
+    // date means the user chose not to record a date for this watch.
+    var pendingWatchedOn: Date? = .now
     var pendingNote: String = ""
 
     private let api: RankAPI
@@ -74,7 +75,7 @@ final class RankStore {
         lastError = nil
         let trimmedNote = pendingNote.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = (mode == .logWatch && !trimmedNote.isEmpty) ? trimmedNote : nil
-        let watchedOn = (mode == .logWatch) ? pendingWatchedOn : nil
+        let watchedOn: Date? = (mode == .logWatch) ? pendingWatchedOn : nil
         do {
             let result = try await api.start(
                 movieId: movie.id,

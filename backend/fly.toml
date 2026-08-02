@@ -1,0 +1,36 @@
+# Fly.io config for muvi backend.
+# Edit `app` to a globally-unique name (Fly requires it) — the URL becomes https://<app>.fly.dev.
+#
+# First-time deploy:
+#   cd backend
+#   fly launch --no-deploy --copy-config --name <your-unique-app-name>   # confirms/writes this file
+#   fly volumes create muvi_data --size 1 --region <region>              # 1 GB volume for SQLite
+#   fly secrets set TMDB_API_KEY=... JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+#   fly deploy
+#
+# Subsequent deploys: `fly deploy` from this directory.
+
+app = "muvi-backend"
+primary_region = "iad"
+
+[build]
+
+[env]
+  # DATABASE_URL is baked into the image; override here if you ever move it off the volume.
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"     # Sleep when idle so the free allowance stretches.
+  auto_start_machines = true       # Wake on incoming request.
+  min_machines_running = 0
+  processes = ["app"]
+
+[[mounts]]
+  source = "muvi_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

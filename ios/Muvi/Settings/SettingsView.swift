@@ -4,6 +4,8 @@ struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
     @State private var settings = SettingsStore()
+    @State private var isConfirmingDelete = false
+    @State private var deletionError: String?
     let onSettingsChanged: () -> Void
 
     var body: some View {
@@ -31,6 +33,23 @@ struct SettingsView: View {
                         Text(email)
                     }
                 }
+
+                // App Store Guideline 5.1.1(v): an app that lets you create an account has to let
+                // you delete it from inside the app.
+                Section {
+                    Button("Delete account", role: .destructive) {
+                        isConfirmingDelete = true
+                    }
+                    .disabled(auth.isAuthenticating)
+                } footer: {
+                    Text("Permanently deletes your account, your library, and every ranking you've logged. This can't be undone.")
+                }
+
+                Section {
+                    Text("This product uses the TMDb API but is not endorsed or certified by TMDb.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -38,6 +57,34 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .confirmationDialog(
+                "Delete your account?",
+                isPresented: $isConfirmingDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete account", role: .destructive) {
+                    Task {
+                        // On success `auth` flips to signed-out and the shell swaps in the auth
+                        // gate; dismissing here just closes the sheet on top of it.
+                        if await auth.deleteAccount() {
+                            dismiss()
+                        } else {
+                            deletionError = auth.lastError ?? "Something went wrong. Please try again."
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your library and ranking history will be erased. This can't be undone.")
+            }
+            .alert(
+                "Couldn't delete account",
+                isPresented: Binding(get: { deletionError != nil }, set: { if !$0 { deletionError = nil } })
+            ) {
+                Button("OK", role: .cancel) { deletionError = nil }
+            } message: {
+                Text(deletionError ?? "")
             }
             .task { await settings.refresh() }
         }

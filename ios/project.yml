@@ -30,6 +30,9 @@ targets:
           - arm64
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # The app only talks HTTPS, which is exempt from export-compliance filing. Declaring it
+        # here answers the question once instead of on every App Store Connect upload.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sunchips.muvi

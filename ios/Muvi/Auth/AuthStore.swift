@@ -52,6 +52,29 @@ final class AuthStore {
         isAuthenticated = false
     }
 
+    /// Permanently deletes the account server-side, then drops to the auth gate.
+    ///
+    /// Returns `true` on success. On failure the caller stays signed in and `lastError` explains
+    /// why — logging out anyway would leave the user believing their data was erased when it
+    /// wasn't, with no way back in to retry.
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        isAuthenticating = true
+        lastError = nil
+        defer { isAuthenticating = false }
+        do {
+            try await api.deleteAccount()
+            logout()
+            return true
+        } catch let error as APIError {
+            lastError = error.errorDescription
+            return false
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     private func perform(_ call: () async throws -> AuthTokenResponse) async {
         isAuthenticating = true
         lastError = nil

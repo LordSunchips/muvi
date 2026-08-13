@@ -32,7 +32,7 @@ class TokenResponse(BaseModel):
 
 def _issue_token(user: User) -> TokenResponse:
     assert user.id is not None
-    return TokenResponse(access_token=create_access_token(user.id), user=UserOut(id=user.id, email=user.email))
+    return TokenResponse(access_token=create_access_token(user.public_id), user=UserOut(id=user.id, email=user.email))
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)

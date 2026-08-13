@@ -118,3 +118,54 @@ def test_delete_account_cascades_user_data(client: TestClient, session) -> None:
     assert session.exec(select(Ranking).where(Ranking.movie_id == movie.id)).all() == []
     assert session.exec(select(RankingSession).where(RankingSession.user_id == user_id)).all() == []
     assert session.get(UserSettings, user_id) is None
+
+
+def test_token_from_deleted_account_cannot_claim_recycled_id(client: TestClient) -> None:
+    """A deleted user's token must not authenticate as whoever inherits their rowid.
+
+    SQLite hands the highest deleted rowid to the next insert, so after A deletes their account
+    B can be created with A's exact integer id. A's token is still unexpired and cryptographically
+    valid, so if the subject were that integer, A would be reading B's library. The subject is
+    `public_id` precisely so this can't happen.
+    """
+    a = client.post("/auth/signup", json={"email": "a@example.com", "password": "supersecret"}).json()
+    a_token, a_id = a["access_token"], a["user"]["id"]
+    assert client.delete("/auth/me", headers={"Authorization": f"Bearer {a_token}"}).status_code == 204
+
+    b = client.post("/auth/signup", json={"email": "b@example.com", "password": "supersecret"}).json()
+    # Precondition for the vulnerability. If SQLite ever stops recycling, this test is moot and
+    # should say so loudly rather than passing for the wrong reason.
+    assert b["user"]["id"] == a_id, "expected sqlite to recycle the rowid"
+
+    assert client.get("/library", headers={"Authorization": f"Bearer {a_token}"}).status_code == 401
+
+
+def test_each_token_sees_only_its_own_library(client: TestClient, session) -> None:
+    """Two live accounts must resolve to different users, each seeing only their own films."""
+    from app.models import Movie
+
+    a = client.post("/auth/signup", json={"email": "a@example.com", "password": "supersecret"}).json()
+    b = client.post("/auth/signup", json={"email": "b@example.com", "password": "supersecret"}).json()
+
+    session.add(Movie(user_id=a["user"]["id"], tmdb_id=603, title="The Matrix", year=1999, genres=[]))
+    session.add(Movie(user_id=b["user"]["id"], tmdb_id=680, title="Pulp Fiction", year=1994, genres=[]))
+    session.commit()
+
+    def titles_for(signup: dict) -> list[str]:
+        response = client.get("/library", headers={"Authorization": f"Bearer {signup['access_token']}"})
+        return [movie["title"] for movie in response.json()]
+
+    assert titles_for(a) == ["The Matrix"]
+    assert titles_for(b) == ["Pulp Fiction"]
+
+
+def test_public_id_is_unique_and_not_the_rowid(client: TestClient, session) -> None:
+    from app.models import User
+
+    client.post("/auth/signup", json={"email": "a@example.com", "password": "supersecret"})
+    client.post("/auth/signup", json={"email": "b@example.com", "password": "supersecret"})
+
+    users = session.exec(select(User)).all()
+    public_ids = [u.public_id for u in users]
+    assert len(set(public_ids)) == len(public_ids), "public_id must be unique"
+    assert all(pid and pid != str(u.id) for pid, u in zip(public_ids, users, strict=True))

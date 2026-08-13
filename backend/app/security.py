@@ -27,23 +27,27 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(public_id: str) -> str:
+    """Mint a token for ``User.public_id``.
+
+    The subject is deliberately the random public id rather than the integer primary key: see
+    the note on `User.public_id` in app.models. Passing a rowid here would reintroduce the
+    recycled-id impersonation this guards against.
+    """
     settings = get_settings()
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(user_id), "exp": expire}
+    payload = {"sub": public_id, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(token: str) -> int | None:
+def decode_access_token(token: str) -> str | None:
+    """Return the token's ``User.public_id``, or None if it isn't valid."""
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
     sub = payload.get("sub")
-    if sub is None:
+    if not isinstance(sub, str) or not sub:
         return None
-    try:
-        return int(sub)
-    except (TypeError, ValueError):
-        return None
+    return sub

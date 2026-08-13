@@ -10,8 +10,18 @@ from app.models import Movie, Ranking
 
 
 def _auth_token(client: TestClient, email: str = "u@example.com") -> str:
+    return _signup(client, email)[0]
+
+
+def _signup(client: TestClient, email: str = "u@example.com") -> tuple[str, int]:
+    """Create a user, returning (token, user_id).
+
+    The id comes from the signup response rather than by decoding the token: the token's subject
+    is `User.public_id`, deliberately not the rowid, so decoding it gives something that can't be
+    used as a foreign key.
+    """
     body = client.post("/auth/signup", json={"email": email, "password": "supersecret"}).json()
-    return body["access_token"]
+    return body["access_token"], body["user"]["id"]
 
 
 def _add_movie(session: Session, user_id: int, tmdb_id: int, title: str) -> Movie:
@@ -23,11 +33,7 @@ def _add_movie(session: Session, user_id: int, tmdb_id: int, title: str) -> Movi
 
 
 def test_rank_start_first_movie_finalizes(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     movie = _add_movie(session, user_id, tmdb_id=1, title="A")
 
     response = client.post(
@@ -44,11 +50,7 @@ def test_rank_start_first_movie_finalizes(client: TestClient, session: Session) 
 
 
 def test_rank_start_returns_session_when_bucket_has_members(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     a = _add_movie(session, user_id, tmdb_id=1, title="A")
     b = _add_movie(session, user_id, tmdb_id=2, title="B")
     headers = {"Authorization": f"Bearer {token}"}
@@ -62,11 +64,7 @@ def test_rank_start_returns_session_when_bucket_has_members(client: TestClient, 
 
 
 def test_full_rank_flow_via_http(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
     a = _add_movie(session, user_id, tmdb_id=1, title="A")
     b = _add_movie(session, user_id, tmdb_id=2, title="B")
@@ -94,12 +92,8 @@ def test_full_rank_flow_via_http(client: TestClient, session: Session) -> None:
 
 
 def test_rank_start_rejects_other_users_movie(client: TestClient, session: Session) -> None:
-    token_a = _auth_token(client, "a@example.com")
+    token_a, user_a_id = _signup(client, "a@example.com")
     token_b = _auth_token(client, "b@example.com")
-    from app.security import decode_access_token
-
-    user_a_id = decode_access_token(token_a)
-    assert user_a_id is not None
     movie = _add_movie(session, user_a_id, tmdb_id=1, title="A")
 
     response = client.post(
@@ -116,11 +110,7 @@ def test_rank_start_requires_auth(client: TestClient) -> None:
 
 
 def test_delete_ranking_removes_row(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
     movie = _add_movie(session, user_id, tmdb_id=1, title="A")
     start = client.post("/rank/start", json={"movie_id": movie.id, "bucket": "loved"}, headers=headers).json()
@@ -133,11 +123,7 @@ def test_delete_ranking_removes_row(client: TestClient, session: Session) -> Non
 
 
 def test_patch_ranking_updates_note_and_watched_on(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
     movie = _add_movie(session, user_id, tmdb_id=1, title="A")
     start = client.post(
@@ -159,11 +145,7 @@ def test_patch_ranking_updates_note_and_watched_on(client: TestClient, session: 
 
 
 def test_patch_ranking_can_clear_watched_on_and_note(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
     movie = _add_movie(session, user_id, tmdb_id=1, title="A")
     start = client.post(
@@ -185,11 +167,7 @@ def test_patch_ranking_can_clear_watched_on_and_note(client: TestClient, session
 
 
 def test_patch_ranking_partial_leaves_other_field_untouched(client: TestClient, session: Session) -> None:
-    token = _auth_token(client)
-    from app.security import decode_access_token
-
-    user_id = decode_access_token(token)
-    assert user_id is not None
+    token, user_id = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
     movie = _add_movie(session, user_id, tmdb_id=1, title="A")
     start = client.post(
@@ -211,12 +189,8 @@ def test_patch_ranking_partial_leaves_other_field_untouched(client: TestClient, 
 
 
 def test_patch_ranking_rejects_other_users(client: TestClient, session: Session) -> None:
-    token_a = _auth_token(client, "a@example.com")
+    token_a, user_a_id = _signup(client, "a@example.com")
     token_b = _auth_token(client, "b@example.com")
-    from app.security import decode_access_token
-
-    user_a_id = decode_access_token(token_a)
-    assert user_a_id is not None
     movie = _add_movie(session, user_a_id, tmdb_id=1, title="A")
     start = client.post(
         "/rank/start",
@@ -234,12 +208,8 @@ def test_patch_ranking_rejects_other_users(client: TestClient, session: Session)
 
 
 def test_delete_ranking_rejects_other_users(client: TestClient, session: Session) -> None:
-    token_a = _auth_token(client, "a@example.com")
+    token_a, user_a_id = _signup(client, "a@example.com")
     token_b = _auth_token(client, "b@example.com")
-    from app.security import decode_access_token
-
-    user_a_id = decode_access_token(token_a)
-    assert user_a_id is not None
     movie = _add_movie(session, user_a_id, tmdb_id=1, title="A")
     start = client.post(
         "/rank/start",

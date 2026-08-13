@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models import User
@@ -20,10 +20,12 @@ def current_user(
     session: SessionDep,
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 ) -> User:
-    user_id = decode_access_token(credentials.credentials)
-    if user_id is None:
+    public_id = decode_access_token(credentials.credentials)
+    if public_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user = session.get(User, user_id)
+    # Looked up by public_id, not primary key: a deleted account's rowid gets handed to the next
+    # signup, and `session.get(User, id)` would resolve an old token onto that new user.
+    user = session.exec(select(User).where(User.public_id == public_id)).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user

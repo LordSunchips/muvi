@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Optional
+from uuid import uuid4
 
 from sqlalchemy import Column
 from sqlalchemy.types import JSON
@@ -23,10 +24,19 @@ def _utcnow() -> datetime:
     return datetime.now()
 
 
+def _public_id() -> str:
+    return uuid4().hex
+
+
 class User(SQLModel, table=True):
     __tablename__ = "users"
 
     id: int | None = Field(default=None, primary_key=True)
+    # What access tokens carry as their subject — never `id`. SQLite reuses a rowid once the
+    # highest row is deleted, so a user who deletes their account can hand their integer id to
+    # the next person who signs up, and their week-long token would then authenticate as that
+    # stranger. A random public id is never recycled, so a token outlives only its own account.
+    public_id: str = Field(default_factory=_public_id, index=True, unique=True)
     email: str = Field(index=True, unique=True)
     password_hash: str
     created_at: datetime = Field(default_factory=_utcnow)

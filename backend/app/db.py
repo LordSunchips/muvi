@@ -1,6 +1,7 @@
 from collections.abc import Iterator
+from uuid import uuid4
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlmodel import Session, SQLModel, create_engine
@@ -64,11 +65,44 @@ def _sqlite_pragmas(dbapi_connection, connection_record) -> None:  # noqa: ARG00
         cursor.close()
 
 
+def _add_users_public_id() -> None:
+    """Add ``users.public_id`` to a database created before that column existed.
+
+    There's no migration tool here: ``init_db`` calls ``create_all``, which creates missing
+    tables but never alters existing ones. Production already has a ``users`` table from before
+    public_id, so without this the column would never appear there and every request would fail
+    on the missing attribute.
+
+    Idempotent — it inspects first and returns immediately once the column is present, which is
+    also the fresh-database case (``create_all`` will have just made it). Safe on a single
+    instance, which is what the Render service runs; concurrent instances could race the ALTER.
+
+    This is a stopgap for one column. A second schema change should bring in Alembic instead.
+    """
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    if any(column["name"] == "public_id" for column in inspector.get_columns("users")):
+        return
+
+    with engine.begin() as conn:
+        # SQLite can't ADD COLUMN with a UNIQUE constraint, so the column goes on bare and the
+        # uniqueness comes from the index below — the same index create_all would have made.
+        conn.execute(text("ALTER TABLE users ADD COLUMN public_id VARCHAR"))
+        for (user_id,) in conn.execute(text("SELECT id FROM users")).fetchall():
+            conn.execute(
+                text("UPDATE users SET public_id = :public_id WHERE id = :user_id"),
+                {"public_id": uuid4().hex, "user_id": user_id},
+            )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id ON users (public_id)"))
+
+
 def init_db() -> None:
     # Import models so SQLModel.metadata is populated before create_all.
     from app import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+    _add_users_public_id()
 
 
 def get_session() -> Iterator[Session]:

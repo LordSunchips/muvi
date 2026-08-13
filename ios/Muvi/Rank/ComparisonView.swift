@@ -34,7 +34,10 @@ struct ComparisonView: View {
 
             Spacer()
 
-            Text("Every tap narrows the binary search until we've placed \(subject.title) in the bucket.")
+            // Describes the effect, not the mechanism: "binary search" and "bucket" are both
+            // internal vocabulary, and "bucket" in particular is a word the user never sees —
+            // they picked "Loved", "Fine" or "Bad".
+            Text("Each answer narrows it down until \(subject.title) lands in the right spot.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -243,4 +243,8 @@ ios/Muvi/Info.plist
 *.sqlite3
 *.db
 
+# App Store screenshots. Regenerated from the simulator whenever the UI changes, and they'd
+# otherwise land in git as multi-MB binaries that never diff usefully.
+screenshots/
+
 .vscode

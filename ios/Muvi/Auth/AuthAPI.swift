@@ -32,4 +32,9 @@ struct AuthAPI {
     func login(email: String, password: String) async throws -> AuthTokenResponse {
         try await client.post("/auth/login", body: CredentialsBody(email: email, password: password))
     }
+
+    /// Permanently deletes the signed-in account and all of its data. Irreversible.
+    func deleteAccount() async throws {
+        try await client.delete("/auth/me")
+    }
 }

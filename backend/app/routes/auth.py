@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import select
 
-from app.deps import SessionDep
-from app.models import User, UserSettings
+from app.deps import CurrentUser, SessionDep
+from app.models import RankingSession, User, UserSettings
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -55,3 +55,22 @@ def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     return _issue_token(user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(user: CurrentUser, session: SessionDep) -> None:
+    """Permanently delete the signed-in user and everything belonging to them.
+
+    Required by App Store Guideline 5.1.1(v): an app offering account creation must let the user
+    delete the account from inside the app, not just deactivate it.
+
+    Movies, rankings and settings come along via ORM cascades declared on the relationships.
+    `ranking_sessions` does not: it has no ORM relationship back to User, so SQLAlchemy won't
+    cascade it, and the DB won't either on Turso — `PRAGMA foreign_keys=ON` is only issued for
+    local SQLite (see `_sqlite_pragmas` in app.db), so the table's ON DELETE CASCADE never fires
+    in production. Clear it explicitly, before the user goes, to avoid orphaned rows.
+    """
+    for rank_session in session.exec(select(RankingSession).where(RankingSession.user_id == user.id)).all():
+        session.delete(rank_session)
+    session.delete(user)
+    session.commit()

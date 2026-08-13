@@ -6,7 +6,7 @@ services:
   - type: web
     name: muvi-backend
     runtime: docker
-    plan: free
+    plan: starter
     region: oregon
     rootDir: backend
     dockerfilePath: ./Dockerfile

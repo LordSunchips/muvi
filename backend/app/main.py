@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.db import init_db
 from app.routes import auth as auth_routes
@@ -18,6 +19,12 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 
 app = FastAPI(title="muvi", version="0.1.1", lifespan=lifespan)
+
+# The library response is a long, highly repetitive JSON array — a full library easily runs to
+# tens of KB uncompressed, and it's re-fetched on every app open and after every mutation.
+# Compressing it cuts outbound bandwidth (which Render meters) several-fold and noticeably
+# speeds up loads on cellular. 1 KB threshold leaves small responses alone.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.include_router(auth_routes.router)
 app.include_router(tmdb_routes.router)

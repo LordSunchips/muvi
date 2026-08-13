@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Optional
 from uuid import uuid4
@@ -21,7 +21,20 @@ class DisplayMetric(StrEnum):
 
 
 def _utcnow() -> datetime:
-    return datetime.now()
+    """Current UTC time, as a naive datetime.
+
+    Was `datetime.now()`, which returns the server's *local* wall clock with no tzinfo — so the
+    name was a lie everywhere but a UTC host. The iOS client reads a naive timestamp as UTC (see
+    the decoder in APIClient.swift), so every stored time was displayed shifted by the server's
+    offset: a ranking written at 23:54 CDT rendered in-app as 6:54 PM.
+
+    Production hid it, because Render's container happens to run UTC. Local development did not.
+
+    The tzinfo is stripped rather than kept: these map to plain DATETIME columns with no timezone,
+    so SQLAlchemy would drop the offset on write anyway. Returning an aware value would only make
+    the in-process type inconsistent with what comes back out of the database.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _public_id() -> str:

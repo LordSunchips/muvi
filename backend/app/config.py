@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # connection strings (which land in logs and tracebacks). A token embedded in database_url's
     # query string still works as a fallback — see app.db.engine_args.
     turso_auth_token: str = ""
+    # Set by Render at runtime (all service types, Docker included) to the deployed commit SHA.
+    # Surfaced by /health so a running instance can be asked which build it is — otherwise the
+    # only way to tell whether a deploy landed is the dashboard, and a change with no observable
+    # behaviour (a timezone fix on a UTC host, say) can't be confirmed from outside at all.
+    # Empty off-platform, which is the local-development case.
+    render_git_commit: str = ""
 
 
 @lru_cache

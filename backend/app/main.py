@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
+from app.config import get_settings
 from app.db import init_db
 from app.routes import auth as auth_routes
 from app.routes import library as library_routes
@@ -36,4 +37,16 @@ app.include_router(settings_routes.router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    """Liveness probe, and a way to ask an instance which build it's running.
+
+    Render polls this (see healthCheckPath in render.yaml). The commit is reported so a deploy
+    can be confirmed from outside: a change with no observable behaviour is otherwise impossible
+    to verify against a live service. "unknown" off-platform, where Render sets no such variable.
+
+    The SHA is safe to expose — the repository is public. Reconsider if that ever changes.
+    """
+    return {
+        "status": "ok",
+        "version": app.version,
+        "commit": get_settings().render_git_commit or "unknown",
+    }

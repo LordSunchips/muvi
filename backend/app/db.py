@@ -53,8 +53,36 @@ def engine_args(database_url: str, auth_token: str = "") -> tuple[str, dict]:
     return url.set(query=query).render_as_string(hide_password=False), connect_args
 
 
+def pool_options(database_url: str) -> dict:
+    """Connection-pool settings, which only a *remote* database needs.
+
+    Turso is reached over the network and the far end drops idle connections. By default
+    SQLAlchemy doesn't notice: it hands the dead connection to the next request, that query
+    fails, and — because the connection is returned to the pool rather than discarded — every
+    subsequent request fails too. Only a process restart clears it.
+
+    That took production down on 13 Aug 2026. Every database-backed route returned 500 while
+    /health, which touches no database, stayed green; restarting the service fixed it instantly
+    with the same credentials and the same schema, which is what ruled out the alternatives.
+
+    The free plan had been hiding this. Spinning down after 15 minutes idle meant no pool ever
+    lived long enough to go stale — moving to Starter for the cold starts kept the process alive
+    and let the latent bug surface.
+
+    - ``pool_pre_ping`` checks liveness on checkout and transparently replaces a dead connection.
+    - ``pool_recycle`` retires connections before the far end is likely to have dropped them,
+      so the pre-ping check rarely has to do the replacing.
+
+    Local SQLite is a file opened in-process: nothing to go stale, and a per-checkout ping would
+    be pure overhead.
+    """
+    if _is_local_sqlite(database_url):
+        return {}
+    return {"pool_pre_ping": True, "pool_recycle": 300}
+
+
 _url, connect_args = engine_args(settings.database_url, settings.turso_auth_token)
-engine = create_engine(_url, echo=False, connect_args=connect_args)
+engine = create_engine(_url, echo=False, connect_args=connect_args, **pool_options(settings.database_url))
 
 
 @event.listens_for(Engine, "connect")

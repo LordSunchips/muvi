@@ -64,4 +64,4 @@ If this policy changes, the updated version will be posted at this URL with a re
 
 ## Contact
 
-Questions about this policy or your data: **<your-contact-email@example.com>**
+Questions about this policy or your data: **muviapp1@gmail.com**

@@ -1,10 +1,12 @@
+---
+layout: default
+title: Privacy Policy
+description: How the muvi app handles your data.
+---
+
 # Privacy Policy for muvi
 
 **Last updated: 12 August 2026**
-
-> **DRAFT — review before publishing.** This describes what the app does today, as implemented.
-> It is not legal advice. Read it against your own circumstances, fill in the contact address
-> below, and confirm it still matches the app before each release.
 
 ## What this app is
 

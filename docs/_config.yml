@@ -1,0 +1,10 @@
+# GitHub Pages config for the muvi public site (served from /docs on main).
+#
+# Deliberately themeless: `_layouts/default.html` is a self-contained page, so the site has no
+# remote-theme dependency to break and no styling that arrives from outside this repo.
+title: muvi
+description: A personal movie-ranking app.
+
+# Repo files that shouldn't become public pages.
+exclude:
+  - README.md

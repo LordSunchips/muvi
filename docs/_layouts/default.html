@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title }} · {{ site.title }}</title>
+  {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #5c5c5c;
+      --rule: #e2e2e2;
+      --link: #0b5fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a;
+        --fg: #e8e8e8;
+        --muted: #a0a0a0;
+        --rule: #2c2f36;
+        --link: #7aa7ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+    main {
+      max-width: 46rem;
+      margin: 0 auto;
+      padding: 3rem 1.25rem 5rem;
+    }
+    h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 {
+      font-size: 1.2rem;
+      margin: 2.5rem 0 0.75rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--rule);
+    }
+    p, ul { margin: 0 0 1rem; }
+    ul { padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+    a { color: var(--link); }
+    /* Long URLs (TMDB's policy link) must not push the page sideways on a phone. */
+    a { overflow-wrap: anywhere; }
+    footer {
+      margin-top: 3.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    {{ content }}
+    <footer>
+      <a href="{{ '/' | relative_url }}">{{ site.title }}</a>
+    </footer>
+  </main>
+</body>
+</html>

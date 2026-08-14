@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as installed_version
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
@@ -13,13 +15,29 @@ from app.routes import settings as settings_routes
 from app.routes import tmdb as tmdb_routes
 
 
+def _version() -> str:
+    """The version from pyproject.toml, read off the installed distribution.
+
+    Declared in one place on purpose. It used to be hardcoded here as well, and the two copies
+    duly drifted — pyproject said one thing while /health and /openapi.json reported another.
+
+    Falls back rather than raising: an uninstalled source checkout is a development situation, and
+    taking the whole app down over a version string would be a poor trade. The sentinel is
+    obviously wrong so it can't be mistaken for a real release.
+    """
+    try:
+        return installed_version("muvi-backend")
+    except PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     init_db()
     yield
 
 
-app = FastAPI(title="muvi", version="0.1.1", lifespan=lifespan)
+app = FastAPI(title="muvi", version=_version(), lifespan=lifespan)
 
 # The library response is a long, highly repetitive JSON array — a full library easily runs to
 # tens of KB uncompressed, and it's re-fetched on every app open and after every mutation.

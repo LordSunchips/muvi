@@ -1,6 +1,6 @@
 [project]
 name = "muvi-backend"
-version = "0.1.1"
+version = "0.1.2"
 description = "Backend for the muvi movie-ranking app"
 # >=3.13 (not 3.14) so the production image can run 3.13, where the [turso] extra's libsql
 # driver has prebuilt wheels. Local dev still resolves to whatever >=3.13 you have installed.

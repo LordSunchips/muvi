@@ -22,7 +22,10 @@ targets:
       properties:
         CFBundleDisplayName: muvi
         CFBundleShortVersionString: "0.1.1"
-        CFBundleVersion: "1"
+        # App Store Connect rejects a build number it has already seen, even for a build that was
+        # never released. Bump this on every upload; the marketing version above only changes when
+        # what users see changes.
+        CFBundleVersion: "2"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

@@ -1,61 +1,80 @@
 # Installing muvi on your iPhone
 
-Uses free personal-team signing via Xcode. No paid Apple Developer account needed. Certificates
-expire after 7 days; you re-run from Xcode weekly to refresh.
+Signed with the paid Apple Developer Program account (team `8589WU98SC`). Provisioning profiles
+last a year, so unlike free personal-team signing there's no weekly re-install.
+
+Release builds talk to the production backend on Render; Debug builds talk to `127.0.0.1:8000`
+so simulator work keeps running against a local server. The switch is the build configuration —
+see step 4 below.
 
 ## One-time setup
 
-1. **Deploy the backend** first (see `../backend/DEPLOY.md` — free Render + Turso setup). You
-   need the production URL that flow gives you.
-2. **Point the release build at prod.** In `Muvi/App/AppConfig.swift`, update the release URL:
-   ```swift
-   #else
-   private static let defaultBaseURL = "https://YOUR-APP.onrender.com"
-   #endif
-   ```
-   (Debug builds still target `127.0.0.1:8000` so simulator dev keeps working.)
-3. **Sign into Xcode with your Apple ID.** Xcode → Settings → Accounts → “+” → Apple ID. You get a
-   free "Personal Team" that can sign apps for your own devices.
-4. **Trust your Mac on the iPhone.** Plug the phone in with a USB cable, unlock it, tap "Trust" when
-   prompted, and enter the passcode.
-5. **Enable Developer Mode on the iPhone** (iOS 16+): Settings → Privacy & Security → Developer
-   Mode → On → phone restarts.
+1. **Sign into Xcode with the developer account.** Xcode → Settings → Accounts → "+" → Apple ID.
+2. **Trust your Mac on the iPhone.** Plug the phone in over USB, unlock it, tap "Trust", enter the
+   passcode.
+3. **Enable Developer Mode on the iPhone** (iOS 16+): Settings → Privacy & Security → Developer
+   Mode → On. The phone restarts.
+
+You don't need to pick a team in Xcode. `DEVELOPMENT_TEAM` and `CODE_SIGN_STYLE` are set in
+[`project.yml`](./project.yml), so a regenerated project comes out already configured — the
+`.xcodeproj` is generated and gitignored, and pinning them there is what stops `xcodegen generate`
+from discarding the choice.
 
 ## Build + install
 
-1. `cd ios && xcodegen generate` — regenerates the Xcode project from `project.yml`.
-2. Open `ios/Muvi.xcodeproj` in Xcode.
-3. Select the **Muvi** target in the sidebar → **Signing & Capabilities** tab.
-   - Team: pick your Apple ID's Personal Team.
-   - Bundle Identifier: `com.sunchips.muvi` (already set in `project.yml`).
-     If Xcode complains it can't register the bundle ID, append something unique like
-     `com.sunchips.muvi.<yourinitials>` — Personal Teams sometimes reject generic-looking IDs.
-4. At the top of the Xcode window, pick your iPhone from the run-destination dropdown (it appears
-   under "iOS Device" once the phone is connected and trusted).
-5. Change scheme to **Release**: Product → Scheme → Edit Scheme → Run → Info → Build Configuration
-   = Release. This makes the app hit your Fly URL instead of `127.0.0.1`.
-6. **Command-R**. Xcode builds, installs, and launches on the phone.
-7. First launch on the phone: iOS refuses to run apps from an untrusted developer. On the phone go
-   to Settings → General → VPN & Device Management → Developer App → tap your Apple ID → Trust.
-   Then relaunch.
+```bash
+cd ios
+xcodegen generate
+open Muvi.xcodeproj
+```
 
-## Wireless deploy after the first install
+1. Pick your iPhone from the run-destination dropdown. It appears under "iOS Device" once the
+   phone is connected, unlocked and trusted.
+2. Switch the scheme to **Release**: Product → Scheme → Edit Scheme → Run → Info → Build
+   Configuration = Release. This is what points the app at the Render backend instead of
+   `127.0.0.1` — see the `#if DEBUG` in [`Muvi/App/AppConfig.swift`](./Muvi/App/AppConfig.swift).
+3. **⌘R.** Xcode builds, installs and launches.
+4. First launch of a build from a new certificate: Settings → General → VPN & Device Management →
+   Developer App → tap the account → Trust. Then relaunch.
 
-Once the phone appears in Xcode via USB you can enable Wi-Fi debugging: Xcode → Window → Devices
-and Simulators → select your phone → check "Connect via network". After that, unplug and Command-R
-works over Wi-Fi (both devices on the same network).
+## Wireless deploy
 
-## When it stops working after 7 days
-
-The provisioning profile Personal Team creates expires every 7 days. The app either fails to launch
-or greys out on the home screen. Plug back into Xcode and Command-R — it re-signs and reinstalls.
+Once the phone has been connected over USB: Xcode → Window → Devices and Simulators → select the
+phone → check "Connect via network". Unplug, and ⌘R works over Wi-Fi with both devices on the same
+network.
 
 ## Troubleshooting
 
-- **"Could not locate device support files"**: Xcode is missing the platform for your iOS version.
-  Xcode → Settings → Platforms → download the matching iOS.
-- **App fails to fetch on device but works in simulator**: your Render URL is unreachable (or
-  the free service is cold-starting — first request after ~15 min idle takes ~30s), or the
-  Release config still points at localhost. Check `AppConfig.swift`.
-- **"No matching profiles found"**: In Signing & Capabilities, uncheck and re-check "Automatically
-  manage signing".
+**Everything fails to load, and it isn't the phone.** Check the backend directly:
+
+```bash
+curl -s https://muvi-backend.onrender.com/health
+```
+
+That returns the running commit, so it also tells you which build is deployed. `/health` touches
+no database, so a healthy response there does **not** mean the API is working — test a
+database-backed route too:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://muvi-backend.onrender.com/auth/login \
+  -H 'Content-Type: application/json' -d '{"email":"nobody@example.com","password":"whatever"}'
+```
+
+`401` means the database is reachable and the credentials were simply wrong — that's a healthy
+API. `500` means the database isn't reachable. That combination — `/health` green while every
+real route 500s — is what a dropped Turso connection looks like; see `pool_options` in
+[`../backend/app/db.py`](../backend/app/db.py). Restarting the Render service clears it.
+
+**Suddenly logged out, or a stored session stops working.** Access tokens carry `User.public_id`.
+Anything that changes how tokens are minted invalidates every existing one, and the app drops to
+the auth gate. Log in again.
+
+**"Could not locate device support files".** Xcode is missing the platform for your iOS version:
+Xcode → Settings → Platforms → download the matching iOS.
+
+**"No matching profiles found".** In Signing & Capabilities, uncheck and re-check "Automatically
+manage signing". If it persists, confirm the bundle ID `com.sunchips.muvi` is still registered
+under the team in the developer portal.
+
+**App runs but can't reach the backend on device while the simulator works.** The simulator was
+probably on a Debug build hitting localhost. Confirm the scheme is set to Release (step 2 above).

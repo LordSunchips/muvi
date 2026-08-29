@@ -20,8 +20,6 @@ cp .env.example .env       # then fill in TMDB_API_KEY and JWT_SECRET
 uv run uvicorn app.main:app --reload
 ```
 
-Docs at http://127.0.0.1:8000/docs.
-
 ## iOS quickstart
 
 Open `ios/Muvi.xcodeproj` in Xcode, pick an iOS 17+ simulator, run. The app expects the backend at `http://127.0.0.1:8000` by default.

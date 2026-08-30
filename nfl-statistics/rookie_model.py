@@ -7,16 +7,17 @@ Pipeline:
        draft season (Sleeper default scoring); 0 for players who never played.
     4. Model: ridge regression (alpha by 5-fold CV) on draft capital,
        position, and per-game college production features.
-    5. Train on classes 2020-2024, validate on the class of 2025, predict
-       the class of 2026.
 
-Output: reports/rookie_predictions_2026.csv
+CLI: train on classes 2020-2024, validate on 2025, predict 2026.
+The train_and_predict() entry point is reused by backtest.py and main.py
+with other class windows.
 """
 import argparse
 import csv
 import sys
 import urllib.request
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -29,13 +30,21 @@ from fantasy_football.data import ASSETS_DIR, download_assets, load_player_game_
 from fantasy_football.ml import RidgeRegression, kfold_alpha_search, r_squared, spearman
 from fantasy_football.scoring import ScoringRules
 
-TRAIN_CLASSES = [2020, 2021, 2022, 2023, 2024]
-VAL_CLASS = 2025
-PREDICT_CLASS = 2026
 COLLEGE_SEASONS = list(range(2014, 2026))
+ALPHAS = [0.1, 1.0, 3.0, 10.0, 30.0, 100.0]
 
 
-def rookie_ppg(draft_year: int, rules: ScoringRules) -> dict:
+def ensure_resources(cfb_raw_dir: Optional[Path] = None, rebuild: bool = False):
+    """College cache + draft picks, downloaded/aggregated on first use."""
+    if rebuild or not COLLEGE_CACHE.exists():
+        build_college_cache(COLLEGE_SEASONS, cfb_raw_dir)
+    draft_path = ASSETS_DIR / "draft_picks.csv"
+    if not draft_path.exists():
+        urllib.request.urlretrieve(DRAFT_PICKS_URL, draft_path)
+    return load_college_seasons(), draft_path
+
+
+def rookie_ppg(draft_year: int, rules: ScoringRules) -> Dict[str, float]:
     """{normalized_name: fantasy PPG in the player's draft season}."""
     logs, positions, _ = load_player_game_logs(draft_year)
     out = {}
@@ -65,65 +74,85 @@ def build_dataset(classes, picks, by_name, rules, with_target=True):
     return X, y, meta
 
 
+def train_and_predict(
+    train_classes: List[int],
+    predict_class: int,
+    rules: ScoringRules,
+    by_name: Dict,
+    draft_path: Path,
+) -> Tuple[List[Dict], RidgeRegression, float]:
+    """Fit on train_classes, predict predict_class.
+
+    Returns (predictions, model, cv_r2) where predictions is a list of
+    {"player", "position", "team", "ppg", "round", "pick", "college"}
+    sorted by predicted PPG descending.
+    """
+    picks = load_draft_picks(draft_path, train_classes + [predict_class])
+    for season in train_classes:
+        download_assets(season)
+    Xtr, ytr, _ = build_dataset(train_classes, picks, by_name, rules)
+    alpha, cv = kfold_alpha_search(Xtr, ytr, ALPHAS)
+    model = RidgeRegression(alpha).fit(Xtr, ytr)
+
+    Xp, _, mp = build_dataset([predict_class], picks, by_name, rules, with_target=False)
+    preds = model.predict(Xp)
+    out = [
+        {"player": p["name"], "position": p["position"], "team": p["team"],
+         "ppg": pred, "round": p["round"], "pick": p["pick"], "college": p["college"]}
+        for p, pred in zip(mp, preds)
+    ]
+    out.sort(key=lambda r: -r["ppg"])
+    return out, model, cv
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cfb-raw-dir", type=Path, default=None,
-                        help="directory with player_stats_<season>.csv files (else downloaded)")
+    parser.add_argument("--cfb-raw-dir", type=Path, default=None)
     parser.add_argument("--rebuild-cache", action="store_true")
+    parser.add_argument("--train-classes", type=int, nargs="+",
+                        default=[2020, 2021, 2022, 2023, 2024])
+    parser.add_argument("--val-class", type=int, default=2025)
+    parser.add_argument("--predict-class", type=int, default=2026)
     args = parser.parse_args()
 
     rules = ScoringRules.sleeper_default()
+    by_name, draft_path = ensure_resources(args.cfb_raw_dir, args.rebuild_cache)
 
-    if args.rebuild_cache or not COLLEGE_CACHE.exists():
-        build_college_cache(COLLEGE_SEASONS, args.cfb_raw_dir)
-    by_name = load_college_seasons()
+    # Validation
+    val_preds, model, cv = train_and_predict(
+        args.train_classes, args.val_class, rules, by_name, draft_path
+    )
+    download_assets(args.val_class)
+    actual = rookie_ppg(args.val_class, rules)
+    yv = [actual.get(normalize_name(r["player"]), 0.0) for r in val_preds]
+    pv = [r["ppg"] for r in val_preds]
+    print(f"=== Validation on class of {args.val_class} "
+          f"(trained {args.train_classes[0]}-{args.train_classes[-1]}, CV R^2 {cv:.3f}) ===")
+    print(f"R^2:      {r_squared(yv, pv):.3f}")
+    print(f"Spearman: {spearman(pv, yv):.3f}")
+    for r, act in list(zip(val_preds, yv))[:12]:
+        print(f"{r['player']:<26} pred {r['ppg']:>5.2f}  actual {act:>5.2f}")
 
-    draft_path = ASSETS_DIR / "draft_picks.csv"
-    if not draft_path.exists():
-        urllib.request.urlretrieve(DRAFT_PICKS_URL, draft_path)
-    picks = load_draft_picks(draft_path, TRAIN_CLASSES + [VAL_CLASS, PREDICT_CLASS])
-    for season in TRAIN_CLASSES + [VAL_CLASS]:
-        download_assets(season)
-
-    Xtr, ytr, mtr = build_dataset(TRAIN_CLASSES, picks, by_name, rules)
-    Xval, yval, mval = build_dataset([VAL_CLASS], picks, by_name, rules)
-    print(f"Training rows (classes {TRAIN_CLASSES[0]}-{TRAIN_CLASSES[-1]}): {len(Xtr)}")
-    print(f"Validation rows (class {VAL_CLASS}): {len(Xval)}")
-
-    alpha, cv = kfold_alpha_search(Xtr, ytr, [0.1, 1.0, 3.0, 10.0, 30.0, 100.0])
-    model = RidgeRegression(alpha).fit(Xtr, ytr)
-    print(f"Chosen ridge alpha: {alpha} (CV R^2 {cv:.3f})")
-
-    pval = model.predict(Xval)
-    print(f"\n=== Validation on class of {VAL_CLASS} ===")
-    print(f"R^2:      {r_squared(yval, pval):.3f}")
-    print(f"Spearman: {spearman(pval, yval):.3f}")
-    top = sorted(range(len(pval)), key=lambda i: -pval[i])[:12]
-    print(f"{'Predicted top-12 rookie':<26} {'pred PPG':>8} {'actual PPG':>10}")
-    for i in top:
-        print(f"{mval[i]['name']:<26} {pval[i]:>8.2f} {yval[i]:>10.2f}")
-
-    print(f"\nFeature weights (standardized):")
+    print("\nTop feature weights (standardized):")
     for name, w in sorted(zip(FEATURE_NAMES, model.weights), key=lambda t: -abs(t[1]))[:8]:
         print(f"  {name:<22} {w:>7.3f}")
 
-    Xp, _, mp = build_dataset([PREDICT_CLASS], picks, by_name, rules, with_target=False)
-    preds = model.predict(Xp)
-    order = sorted(range(len(preds)), key=lambda i: -preds[i])
-    out = Path(__file__).parent / "reports" / f"rookie_predictions_{PREDICT_CLASS}.csv"
+    # Prediction for the upcoming class
+    preds, _, _ = train_and_predict(
+        args.train_classes + [args.val_class], args.predict_class, rules, by_name, draft_path
+    )
+    out = Path(__file__).parent / "reports" / f"rookie_predictions_{args.predict_class}.csv"
     with open(out, "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["rank", "player", "position", "college", "round", "pick",
+        w.writerow(["rank", "player", "position", "team", "college", "round", "pick",
                     "predicted_rookie_ppg"])
-        for rank, i in enumerate(order, 1):
-            p = mp[i]
-            w.writerow([rank, p["name"], p["position"], p["college"],
-                        p["round"], p["pick"], round(preds[i], 2)])
-    print(f"\n=== Predicted top-15 rookies, class of {PREDICT_CLASS} ===")
-    for i in order[:15]:
-        p = mp[i]
-        print(f"{p['name']:<26} {p['position']:<3} {p['college']:<16} "
-              f"R{p['round']} P{p['pick']:<3} -> {preds[i]:.2f} PPG")
+        for rank, r in enumerate(preds, 1):
+            w.writerow([rank, r["player"], r["position"], r["team"], r["college"],
+                        r["round"], r["pick"], round(r["ppg"], 2)])
+    print(f"\n=== Predicted top-15 rookies, class of {args.predict_class} ===")
+    for r in preds[:15]:
+        print(f"{r['player']:<26} {r['position']:<3} {r['team']:<4} R{r['round']} "
+              f"P{r['pick']:<4} -> {r['ppg']:.2f} PPG")
     print(f"\nWrote {len(preds)} rookie predictions to {out}")
 
 

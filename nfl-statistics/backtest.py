@@ -24,10 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from fantasy_football.analysis import generate_draft_order, write_draft_order_csv
 from fantasy_football.data import download_assets, load_seasons
+from fantasy_football.scoring import ScoringRules
 from fantasy_football.vor import LeagueSettings
-
-TRAIN_SEASONS = [2020, 2021, 2022, 2023, 2024]
-TEST_SEASON = 2025
 
 
 def spearman(xs: List[float], ys: List[float]) -> float:
@@ -87,7 +85,7 @@ def evaluate(predicted_order: List[str], actual: Dict[str, float], label: str) -
 
 def report(res: Dict) -> None:
     print(f"\n=== {res['label']} ===")
-    print(f"Players graded (appeared in {TEST_SEASON}): {res['coverage']}")
+    print(f"Players graded: {res['coverage']}")
     print(f"Spearman rank correlation (all graded):    {res['spearman_all']:.3f}")
     print(f"Spearman rank correlation (predicted top 150): {res['spearman_top150']:.3f}")
     print(f"{'Top-N':>6} {'hits':>6} {'value captured':>15}")
@@ -95,47 +93,78 @@ def report(res: Dict) -> None:
         print(f"{n:>6} {res['hits'][n]:>4}/{n:<3} {res['value_captured'][n]:>14.1%}")
 
 
+def rookie_projections_for(test_season: int, rules: ScoringRules, top_n: int):
+    """Leakage-free rookie projections for the test season's draft class:
+    the model is trained only on classes before the test season."""
+    from rookie_model import ensure_resources, train_and_predict
+
+    by_name, draft_path = ensure_resources()
+    train_classes = list(range(test_season - 5, test_season))
+    preds, _, _ = train_and_predict(train_classes, test_season, rules, by_name, draft_path)
+    return preds[:top_n]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--test-season", type=int, default=2025)
     parser.add_argument("--recency-decay", type=float, default=0.5)
     parser.add_argument("--num-teams", type=int, default=12)
+    parser.add_argument("--embed-rookies", type=int, default=12,
+                        help="embed top-N projected rookies into the board (0 = off)")
     args = parser.parse_args()
+    test_season = args.test_season
+    train_seasons = list(range(test_season - 5, test_season))
 
-    for season in TRAIN_SEASONS + [TEST_SEASON]:
+    for season in train_seasons + [test_season]:
         download_assets(season)
 
-    train_logs, train_pos, train_teams = load_seasons(TRAIN_SEASONS)
-    test_logs_by_season, test_pos, _ = load_seasons([TEST_SEASON])
-    test_logs = test_logs_by_season[TEST_SEASON]
+    train_logs, train_pos, train_teams = load_seasons(train_seasons)
+    test_logs_by_season, test_pos, _ = load_seasons([test_season])
+    test_logs = test_logs_by_season[test_season]
 
     settings = LeagueSettings(num_teams=args.num_teams, recency_decay=args.recency_decay)
     rules = settings.scoring_rules
     actual = actual_total_points(test_logs, test_pos, rules)
 
-    # --- Strategy under test: 5-season recency-weighted VOR board ---
-    rows = generate_draft_order(train_logs, train_pos, settings, train_teams)
-    predicted = [r["player"] for r in rows]
-    main_res = evaluate(predicted, actual, f"5-season weighted VOR (decay {args.recency_decay})")
+    rookies = rookie_projections_for(test_season, rules, args.embed_rookies) \
+        if args.embed_rookies else []
+    if rookies:
+        print(f"Embedded rookies ({len(rookies)}): "
+              + ", ".join(r["player"] for r in rookies))
 
-    # --- Baseline: 2024 season only (the pre-weighting behavior) ---
+    # --- Strategy under test: weighted VOR board with rookies embedded ---
+    rows = generate_draft_order(train_logs, dict(train_pos), settings, dict(train_teams),
+                                rookie_projections=rookies)
+    predicted = [r["player"] for r in rows]
+    label = (f"{len(train_seasons)}-season weighted VOR (decay {args.recency_decay})"
+             + (f" + top-{len(rookies)} rookies" if rookies else ""))
+    main_res = evaluate(predicted, actual, label)
+
+    # --- Veteran-only board (no rookies) for comparison ---
+    vet_rows = generate_draft_order(train_logs, dict(train_pos), settings, dict(train_teams))
+    vet_res = evaluate([r["player"] for r in vet_rows], actual, "Same board, veterans only")
+
+    # --- Baseline: last season only ---
+    last = train_seasons[-1]
     baseline_rows = generate_draft_order(
-        {2024: train_logs[2024]}, train_pos, settings, train_teams
+        {last: train_logs[last]}, dict(train_pos), settings, dict(train_teams)
     )
-    base_res = evaluate([r["player"] for r in baseline_rows], actual, "Baseline: 2024 season only")
+    base_res = evaluate([r["player"] for r in baseline_rows], actual,
+                        f"Baseline: {last} season only")
 
     report(main_res)
+    report(vet_res)
     report(base_res)
 
     # How much 2025 production was undraftable (rookies etc.)?
     hindsight = sorted(actual, key=lambda p: -actual[p])
     known = set(predicted)
     missing = [p for p in hindsight[:100] if p not in known]
-    print(f"\n2025 top-100 finishers invisible to any pre-2025 board (rookies): "
-          f"{len(missing)}")
+    print(f"\nTop-100 finishers missing from the graded board: {len(missing)}")
     print("  " + ", ".join(missing[:12]) + (" …" if len(missing) > 12 else ""))
 
     # Per-player detail CSV
-    out = Path(__file__).parent / "reports" / "backtest_2025.csv"
+    out = Path(__file__).parent / "reports" / f"backtest_{test_season}.csv"
     detail = []
     hindsight_rank = {p: i + 1 for i, p in enumerate(hindsight)}
     for r in rows:

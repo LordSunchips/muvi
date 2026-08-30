@@ -31,8 +31,14 @@ def generate_draft_order(
     player_positions: Dict[str, str],
     league_settings: LeagueSettings,
     player_teams: Optional[Dict[str, str]] = None,
+    rookie_projections: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     """Rank all players by VOR — the recommended draft order.
+
+    rookie_projections (optional) embeds incoming rookies with no NFL
+    history: each entry {"player", "position", "team", "ppg"} is added to
+    the pool with base_value = predicted rookie PPG, so rookies compete
+    for draft slots and shift replacement levels like veterans do.
 
     Base values are recency-weighted averages of per-season risk-adjusted
     values (see compute_weighted_base_value); players who did not appear in
@@ -66,6 +72,14 @@ def generate_draft_order(
         )
         for name, season_logs in per_player.items()
     }
+    rookies = {r["player"]: r for r in (rookie_projections or [])
+               if r["player"] not in base_values}
+    for name, r in rookies.items():
+        base_values[name] = round(r["ppg"], 4)
+        player_positions[name] = r["position"]
+        player_teams.setdefault(name, r.get("team", ""))
+        per_player[name] = {}
+
     replacement = calc.compute_replacement_values(base_values, player_positions)
     vor = calc.compute_vor(base_values, replacement, player_positions)
 
@@ -75,6 +89,8 @@ def generate_draft_order(
         latest_log = per_player[name].get(latest, [])
         scores = rules.compute_season_scores(latest_log, pos)
         avg = round(sum(scores) / len(scores), 2) if scores else 0.0
+        if name in rookies:
+            avg = round(rookies[name]["ppg"], 2)
         rows.append(
             {
                 "player": name,

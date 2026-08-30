@@ -1,6 +1,85 @@
+=== 5-season weighted VOR (decay 0.5) + top-12 rookies ===
+Players graded: 525
+Spearman rank correlation (all graded):    0.665
+Spearman rank correlation (predicted top 150): 0.538
+ Top-N   hits  value captured
+    12    4/12           68.3%
+    24    5/24           68.1%
+    50   20/50           75.1%
+   100   56/100          76.6%
 
-=== 5-season weighted VOR (decay 0.5) ===
-Players graded (appeared in 2025): 524
+=== Same board, veterans only ===
+Players graded: 514
+Spearman rank correlation (all graded):    0.668
+Spearman rank correlation (predicted top 150): 0.515
+ Top-N   hits  value captured
+    12    4/12           68.3%
+    24    5/24           68.1%
+    50   20/50           74.7%
+   100   55/100          76.0%
+
+=== Baseline: 2022 season only ===
+Players graded: 514
+Spearman rank correlation (all graded):    0.650
+Spearman rank correlation (predicted top 150): 0.475
+ Top-N   hits  value captured
+    12    5/12           72.1%
+    24    7/24           69.7%
+    50   18/50           72.9%
+   100   56/100          75.3%
+
+Top-100 finishers missing from the graded board: 8
+  Puka Nacua, Sam LaPorta, Calvin Ridley, Jayden Reed, De'Von Achane, Brandon Aubrey, Rashee Rice, Zay Flowers
+
+Wrote per-player detail to /home/user/nfl-statistics/reports/backtest_2023.csv
+
+=== 5-season weighted VOR (decay 0.5) + top-12 rookies ===
+Players graded: 522
+Spearman rank correlation (all graded):    0.685
+Spearman rank correlation (predicted top 150): 0.366
+ Top-N   hits  value captured
+    12    3/12           61.4%
+    24    9/24           69.3%
+    50   19/50           72.2%
+   100   54/100          76.4%
+
+=== Same board, veterans only ===
+Players graded: 512
+Spearman rank correlation (all graded):    0.691
+Spearman rank correlation (predicted top 150): 0.402
+ Top-N   hits  value captured
+    12    3/12           61.4%
+    24    9/24           69.3%
+    50   19/50           72.2%
+   100   54/100          76.3%
+
+=== Baseline: 2023 season only ===
+Players graded: 512
+Spearman rank correlation (all graded):    0.653
+Spearman rank correlation (predicted top 150): 0.371
+ Top-N   hits  value captured
+    12    1/12           53.3%
+    24    5/24           64.7%
+    50   19/50           70.4%
+   100   52/100          75.7%
+
+Top-100 finishers missing from the graded board: 5
+  Brian Thomas Jr., Bucky Irving, Brock Bowers, Ladd McConkey, Tyrone Tracy Jr.
+
+Wrote per-player detail to /home/user/nfl-statistics/reports/backtest_2024.csv
+
+=== 5-season weighted VOR (decay 0.5) + top-12 rookies ===
+Players graded: 535
+Spearman rank correlation (all graded):    0.719
+Spearman rank correlation (predicted top 150): 0.351
+ Top-N   hits  value captured
+    12    3/12           71.5%
+    24   10/24           68.2%
+    50   23/50           72.2%
+   100   55/100          77.9%
+
+=== Same board, veterans only ===
+Players graded: 524
 Spearman rank correlation (all graded):    0.722
 Spearman rank correlation (predicted top 150): 0.380
  Top-N   hits  value captured
@@ -10,7 +89,7 @@ Spearman rank correlation (predicted top 150): 0.380
    100   55/100          77.4%
 
 === Baseline: 2024 season only ===
-Players graded (appeared in 2025): 524
+Players graded: 524
 Spearman rank correlation (all graded):    0.681
 Spearman rank correlation (predicted top 150): 0.385
  Top-N   hits  value captured
@@ -19,7 +98,8 @@ Spearman rank correlation (predicted top 150): 0.385
     50   20/50           68.4%
    100   51/100          75.7%
 
-2025 top-100 finishers invisible to any pre-2025 board (rookies): 11
-  Jaxson Dart, Ashton Jeanty, Cam Ward, TreVeyon Henderson, RJ Harvey, Tetairoa McMillan, Emeka Egbuka, Tyler Shough, Quinshon Judkins, Tyler Warren, Harold Fannin Jr.
+Top-100 finishers missing from the graded board: 3
+  Cam Ward, Tyler Warren, Harold Fannin Jr.
 
 Wrote per-player detail to /home/user/nfl-statistics/reports/backtest_2025.csv
+

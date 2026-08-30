@@ -69,10 +69,13 @@ python3 -m unittest discover -s tests
 
 ## Backtest
 
-`python3 backtest.py` trains the board on 2020-2024 and grades it against
-actual 2025 production (Spearman rank correlation, top-N hit rates, and
-value captured vs a perfect-hindsight board), alongside a
-last-season-only baseline. Results: `reports/backtest_summary.txt`.
+`python3 backtest.py --test-season <year>` trains the board on the five
+preceding seasons (rookie model included, trained only on earlier draft
+classes — no leakage) and grades it against that season's actual
+production: Spearman rank correlation, top-N hit rates, and value
+captured vs a perfect-hindsight board, alongside veteran-only and
+last-season-only comparisons. Run for 2023, 2024, and 2025:
+`reports/backtest_<year>.csv` and `reports/backtest_summary.txt`.
 
 ## Rookie projections (supervised ML)
 
@@ -83,4 +86,8 @@ a ridge regression (stdlib implementation, alpha via 5-fold CV) to
 predict rookie-season fantasy PPG from draft capital, position, and
 per-game college production. Trained on classes 2020-2024, validated on
 the class of 2025 (R^2 ≈ 0.34, Spearman ≈ 0.49), and used to project the
-class of 2026: `reports/rookie_predictions_2026.csv`.
+class of 2026: `reports/rookie_predictions_2026.csv`. The top 12
+projected rookies are embedded into the main draft board
+(`main.py --embed-rookies N`, 0 to disable): each enters the player pool
+with base_value = predicted rookie PPG and competes for draft slots and
+replacement levels like a veteran.

@@ -138,6 +138,7 @@ def load_draft_picks(path: Path, classes: List[int]) -> List[Dict]:
                 "round": int(r["round"]),
                 "pick": int(r["pick"]),
                 "name": r["pfr_player_name"],
+                "team": r["team"],
                 "position": r["position"],
                 "college": r["college"],
             })

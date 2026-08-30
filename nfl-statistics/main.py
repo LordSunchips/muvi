@@ -26,6 +26,8 @@ def main() -> None:
     parser.add_argument("--risk-aversion", type=float, default=0.1)
     parser.add_argument("--min-games", type=int, default=1,
                         help="exclude players with fewer games in the latest season")
+    parser.add_argument("--embed-rookies", type=int, default=12,
+                        help="embed top-N ML-projected rookies from the upcoming draft class (0 = off)")
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
@@ -42,7 +44,21 @@ def main() -> None:
         risk_aversion=args.risk_aversion,
         recency_decay=args.recency_decay,
     )
-    rows = generate_draft_order(logs_by_season, positions, settings, teams)
+
+    rookies = []
+    if args.embed_rookies:
+        from rookie_model import ensure_resources, train_and_predict
+        by_name, draft_path = ensure_resources()
+        train_classes = list(range(args.season - 4, args.season + 1))
+        preds, _, _ = train_and_predict(
+            train_classes, args.season + 1, settings.scoring_rules, by_name, draft_path
+        )
+        rookies = preds[: args.embed_rookies]
+        print(f"Embedded rookies (class of {args.season + 1}): "
+              + ", ".join(r["player"] for r in rookies))
+
+    rows = generate_draft_order(logs_by_season, positions, settings, teams,
+                                rookie_projections=rookies)
 
     output = args.output or Path(__file__).parent / "reports" / f"draft_order_{args.season}.csv"
     write_draft_order_csv(rows, output)
@@ -51,7 +67,7 @@ def main() -> None:
         print(
             f"{row['overall_rank']:>3}. {row['player']:<24} {row['position']:<4}"
             f"{row['team']:<4} VOR={row['vor']:>7.2f}  base={row['base_value']:>6.2f}"
-            f"  seasons={row['seasons_used']}"
+            f"  seasons={row['seasons_used']}" + ("  [ROOKIE]" if row['seasons_used'] == 0 else "")
         )
 
 

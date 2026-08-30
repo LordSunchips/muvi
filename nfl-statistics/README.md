@@ -73,3 +73,14 @@ python3 -m unittest discover -s tests
 actual 2025 production (Spearman rank correlation, top-N hit rates, and
 value captured vs a perfect-hindsight board), alongside a
 last-season-only baseline. Results: `reports/backtest_summary.txt`.
+
+## Rookie projections (supervised ML)
+
+`python3 rookie_model.py` aggregates college play-attribution data
+(sportsdataverse/cfbfastR-data, 2014-2025) into per-player college
+seasons, links nflverse draft picks to their college careers, and trains
+a ridge regression (stdlib implementation, alpha via 5-fold CV) to
+predict rookie-season fantasy PPG from draft capital, position, and
+per-game college production. Trained on classes 2020-2024, validated on
+the class of 2025 (R^2 ≈ 0.34, Spearman ≈ 0.49), and used to project the
+class of 2026: `reports/rookie_predictions_2026.csv`.

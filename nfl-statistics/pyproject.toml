@@ -1,0 +1,9 @@
+[project]
+name = "fantasy-football-vor"
+version = "1.0.0"
+description = "Value Over Replacement engine for fantasy football draft rankings"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

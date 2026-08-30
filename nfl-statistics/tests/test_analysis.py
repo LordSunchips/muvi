@@ -14,9 +14,15 @@ from fantasy_football.vor import LeagueSettings
 class TestGenerateDraftOrder(unittest.TestCase):
     def test_ranking_and_csv(self):
         logs = {
-            "Star RB": [{"rushing_yards": 150, "rushing_tds": 1} for _ in range(17)],
-            "Ok RB": [{"rushing_yards": 60} for _ in range(17)],
-            "Star WR": [{"receptions": 8, "receiving_yards": 110} for _ in range(17)],
+            2025: {
+                "Star RB": [{"rushing_yards": 150, "rushing_tds": 1} for _ in range(17)],
+                "Ok RB": [{"rushing_yards": 60} for _ in range(17)],
+                "Star WR": [{"receptions": 8, "receiving_yards": 110} for _ in range(17)],
+            },
+            2024: {
+                "Star RB": [{"rushing_yards": 150, "rushing_tds": 1} for _ in range(17)],
+                "Retired Guy": [{"rushing_yards": 200, "rushing_tds": 2} for _ in range(17)],
+            },
         }
         positions = {"Star RB": "RB", "Ok RB": "RB", "Star WR": "WR"}
         settings = LeagueSettings(
@@ -38,6 +44,7 @@ class TestGenerateDraftOrder(unittest.TestCase):
             with open(out) as fh:
                 read = list(csv.DictReader(fh))
             self.assertEqual(len(read), 3)
+            self.assertNotIn("Retired Guy", [r["player"] for r in read])
             self.assertEqual(read[0]["player"], "Star RB")
 
 

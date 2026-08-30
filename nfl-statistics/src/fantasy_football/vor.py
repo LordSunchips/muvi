@@ -46,6 +46,37 @@ def compute_base_value(
     return round(avg * availability - risk_aversion * std, 4)
 
 
+def compute_weighted_base_value(
+    logs_by_season: Dict[int, List[Dict]],
+    rules: ScoringRules,
+    position: str,
+    season_games: int = 17,
+    risk_aversion: float = 0.1,
+    recency_decay: float = 0.7,
+) -> float:
+    """Recency-weighted multi-season base value.
+
+    Each season the player actually appeared in gets its own risk-adjusted
+    base value, then seasons are averaged with weights decay**seasons_ago
+    (most recent season = 1.0), renormalized over the seasons present. A
+    player with three seasons of data is weighted across just those three.
+    """
+    present = sorted((s for s, log in logs_by_season.items() if log), reverse=True)
+    if not present:
+        return 0.0
+    latest = present[0]
+    total_w = 0.0
+    total = 0.0
+    for season in present:
+        w = recency_decay ** (latest - season)
+        val = compute_base_value(
+            logs_by_season[season], rules, position, season_games, risk_aversion
+        )
+        total += w * val
+        total_w += w
+    return round(total / total_w, 4)
+
+
 @dataclass
 class LeagueSettings:
     """Configuration for a fantasy football league.
@@ -63,6 +94,7 @@ class LeagueSettings:
     scoring_rules: ScoringRules = field(default_factory=ScoringRules.sleeper_default)
     season_games: int = 17
     risk_aversion: float = 0.1
+    recency_decay: float = 0.7  # weight = decay ** seasons_ago in multi-season averaging
 
 
 class VORCalculator:

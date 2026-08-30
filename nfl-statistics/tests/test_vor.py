@@ -73,3 +73,50 @@ class TestVORCalculator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWeightedBaseValue(unittest.TestCase):
+    def _log(self, yards, n=17):
+        return [{"rushing_yards": yards} for _ in range(n)]
+
+    def test_recency_bias(self):
+        from fantasy_football.vor import compute_weighted_base_value
+        rules = ScoringRules.sleeper_default()
+        # improving player vs declining player, same season values reversed
+        improving = {2023: self._log(50), 2024: self._log(100), 2025: self._log(150)}
+        declining = {2023: self._log(150), 2024: self._log(100), 2025: self._log(50)}
+        self.assertGreater(
+            compute_weighted_base_value(improving, rules, "RB", recency_decay=0.7),
+            compute_weighted_base_value(declining, rules, "RB", recency_decay=0.7),
+        )
+
+    def test_weights_renormalized_for_short_history(self):
+        from fantasy_football.vor import compute_base_value, compute_weighted_base_value
+        rules = ScoringRules.sleeper_default()
+        # a rookie with one steady season gets exactly that season's base value
+        one = {2025: self._log(100)}
+        self.assertAlmostEqual(
+            compute_weighted_base_value(one, rules, "RB"),
+            compute_base_value(self._log(100), rules, "RB"),
+            places=3,
+        )
+
+    def test_flat_average_when_decay_is_one(self):
+        from fantasy_football.vor import compute_base_value, compute_weighted_base_value
+        rules = ScoringRules.sleeper_default()
+        logs = {2024: self._log(50), 2025: self._log(150)}
+        expected = (
+            compute_base_value(self._log(50), rules, "RB")
+            + compute_base_value(self._log(150), rules, "RB")
+        ) / 2
+        self.assertAlmostEqual(
+            compute_weighted_base_value(logs, rules, "RB", recency_decay=1.0),
+            expected,
+            places=3,
+        )
+
+    def test_empty(self):
+        from fantasy_football.vor import compute_weighted_base_value
+        self.assertEqual(
+            compute_weighted_base_value({}, ScoringRules.sleeper_default(), "RB"), 0.0
+        )

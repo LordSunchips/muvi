@@ -17,9 +17,14 @@ draft order. Sibling project to
    is Sleeper's default configuration: half-PPR, 4-pt passing TDs,
    -2 fumbles lost, distance-tiered kicker scoring with -1 misses, and
    tiered DEF points-allowed scoring.
-3. **Base value** — `avg_score * availability - risk_aversion * std_dev`.
-   Availability (games played / 17) penalizes injury-prone players;
-   the standard-deviation term penalizes boom/bust inconsistency.
+3. **Base value** — per season, `avg_score * availability - risk_aversion
+   * std_dev`. Availability (games played / 17) penalizes injury-prone
+   players; the standard-deviation term penalizes boom/bust inconsistency.
+   Per-season values are then combined into a recency-weighted average over
+   the past five seasons (weight `decay^seasons_ago`, default decay 0.7),
+   renormalized over the seasons a player actually has — a third-year
+   player is weighted across just their three seasons. Players absent from
+   the most recent season are excluded.
 4. **Replacement level** — for each position, the base value of the first
    player projected to go undrafted as a starter:
    rank `num_teams * starting_spots`, with the league's FLEX slots
@@ -37,21 +42,22 @@ Defaults model a 12-team Sleeper league with starters
 ## Usage
 
 ```bash
-python3 main.py                    # 2025 season logs, 12 teams
-python3 main.py --season 2024 --num-teams 10 --min-games 4
+python3 main.py                    # 2021-2025 logs, decay 0.7, 12 teams
+python3 main.py --num-seasons 3 --recency-decay 0.5 --num-teams 10 --min-games 4
 ```
 
 No third-party dependencies — Python 3.10+ standard library only.
 
 Output: `reports/draft_order_<season>.csv` with columns
-`overall_rank, position_rank, player, position, team, games_played,
-avg_fantasy_pts, base_value, replacement_value, vor`.
+`overall_rank, position_rank, player, position, team, seasons_used,
+games_latest_season, avg_pts_latest_season, base_value,
+replacement_value, vor`.
 
 ## Caveats
 
-- Base values are computed from last season's game logs, not forward
-  projections — rookies are absent and situation changes (trades, new
-  starters) aren't modeled.
+- Base values are computed from historical game logs, not forward
+  projections — incoming rookies are absent and situation changes
+  (trades, new starters) aren't modeled.
 - Pure VOR ranks elite K/DEF units higher (top ~50) than market drafts do;
   most leagues stream those positions, so feel free to discount them.
 

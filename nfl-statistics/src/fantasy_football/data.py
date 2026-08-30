@@ -135,3 +135,21 @@ def load_all_game_logs(season: int):
     pos.update(dst_pos)
     teams.update(dst_teams)
     return logs, pos, teams
+
+
+def load_seasons(seasons: List[int]):
+    """Load game logs for multiple seasons.
+
+    Returns (logs_by_season, positions, teams):
+        logs_by_season — {season: {player: [game rows]}}
+        positions/teams — merged across seasons, most recent season wins.
+    """
+    logs_by_season: Dict[int, Dict[str, List[Dict]]] = {}
+    positions: Dict[str, str] = {}
+    teams: Dict[str, str] = {}
+    for season in sorted(seasons):
+        logs, pos, tm = load_all_game_logs(season)
+        logs_by_season[season] = logs
+        positions.update(pos)  # later (more recent) seasons overwrite
+        teams.update(tm)
+    return logs_by_season, positions, teams

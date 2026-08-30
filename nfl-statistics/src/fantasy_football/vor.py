@@ -52,7 +52,7 @@ def compute_weighted_base_value(
     position: str,
     season_games: int = 17,
     risk_aversion: float = 0.1,
-    recency_decay: float = 0.7,
+    recency_decay: float = 0.5,
 ) -> float:
     """Recency-weighted multi-season base value.
 
@@ -94,7 +94,7 @@ class LeagueSettings:
     scoring_rules: ScoringRules = field(default_factory=ScoringRules.sleeper_default)
     season_games: int = 17
     risk_aversion: float = 0.1
-    recency_decay: float = 0.7  # weight = decay ** seasons_ago in multi-season averaging
+    recency_decay: float = 0.5  # weight = decay ** seasons_ago in multi-season averaging
 
 
 class VORCalculator:

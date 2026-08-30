@@ -21,7 +21,7 @@ draft order. Sibling project to
    * std_dev`. Availability (games played / 17) penalizes injury-prone
    players; the standard-deviation term penalizes boom/bust inconsistency.
    Per-season values are then combined into a recency-weighted average over
-   the past five seasons (weight `decay^seasons_ago`, default decay 0.7),
+   the past five seasons (weight `decay^seasons_ago`, default decay 0.5, chosen by backtest),
    renormalized over the seasons a player actually has — a third-year
    player is weighted across just their three seasons. Players absent from
    the most recent season are excluded.
@@ -66,3 +66,10 @@ replacement_value, vor`.
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+## Backtest
+
+`python3 backtest.py` trains the board on 2020-2024 and grades it against
+actual 2025 production (Spearman rank correlation, top-N hit rates, and
+value captured vs a perfect-hindsight board), alongside a
+last-season-only baseline. Results: `reports/backtest_summary.txt`.

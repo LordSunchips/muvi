@@ -20,7 +20,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=2025, help="most recent source season")
     parser.add_argument("--num-seasons", type=int, default=5, help="seasons of history to weight")
-    parser.add_argument("--recency-decay", type=float, default=0.7,
+    parser.add_argument("--recency-decay", type=float, default=0.5,
                         help="per-year weight decay for older seasons (1.0 = flat average)")
     parser.add_argument("--num-teams", type=int, default=12)
     parser.add_argument("--risk-aversion", type=float, default=0.1)

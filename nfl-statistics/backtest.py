@@ -24,8 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from fantasy_football.analysis import generate_draft_order, write_draft_order_csv
 from fantasy_football.data import download_assets, load_seasons
+from fantasy_football.projection import VeteranProjector, build_summaries
 from fantasy_football.scoring import ScoringRules
-from fantasy_football.vor import LeagueSettings
+from fantasy_football.vor import LeagueSettings, VORCalculator
 
 
 def spearman(xs: List[float], ys: List[float]) -> float:
@@ -61,8 +62,27 @@ def actual_total_points(logs, positions, rules) -> Dict[str, float]:
     }
 
 
-def evaluate(predicted_order: List[str], actual: Dict[str, float], label: str) -> Dict:
-    """Grade a predicted draft order against actual total points."""
+def actual_vor_values(actual: Dict[str, float], positions: Dict[str, str],
+                      settings: LeagueSettings) -> Dict[str, float]:
+    """Hindsight VOR: actual total points minus the actual replacement level
+    at each position (flex-aware, same machinery as the draft board)."""
+    calc = VORCalculator(settings)
+    repl = calc.compute_replacement_values(actual, positions)
+    return {p: actual[p] - repl.get(positions.get(p, ""), 0.0) for p in actual}
+
+
+def evaluate(predicted_order: List[str], actual: Dict[str, float],
+             actual_vor: Dict[str, float], label: str) -> Dict:
+    """Grade a predicted draft order against actual production.
+
+    Two value-captured denominations:
+      raw — share of total points vs the hindsight-best top-N. Biased
+            toward QBs (raw leaderboards are QB-heavy), reported for
+            continuity.
+      vor — share of points ABOVE POSITIONAL REPLACEMENT vs the
+            hindsight-best top-N by that measure. This is the metric a
+            draft is actually trying to maximize.
+    """
     common = [p for p in predicted_order if p in actual]
     pred_rank_vals = [-i for i, _ in enumerate(common)]  # earlier pick = higher value
     actual_vals = [actual[p] for p in common]
@@ -71,8 +91,10 @@ def evaluate(predicted_order: List[str], actual: Dict[str, float], label: str) -
     rho150 = spearman([-i for i in range(len(top150))], [actual[p] for p in top150])
 
     hindsight = sorted(actual, key=lambda p: -actual[p])
+    hindsight_vor = sorted(actual_vor, key=lambda p: -actual_vor[p])
     results = {"label": label, "spearman_all": rho_all, "spearman_top150": rho150,
-               "coverage": len(common), "hits": {}, "value_captured": {}}
+               "coverage": len(common), "hits": {}, "value_captured": {},
+               "vor_captured": {}}
     for n in (12, 24, 50, 100):
         pred_top = set(common[:n])
         act_top = set(hindsight[:n])
@@ -80,6 +102,9 @@ def evaluate(predicted_order: List[str], actual: Dict[str, float], label: str) -
         pred_pts = sum(actual[p] for p in common[:n])
         best_pts = sum(actual[p] for p in hindsight[:n])
         results["value_captured"][n] = pred_pts / best_pts if best_pts else 0.0
+        pred_vor = sum(actual_vor[p] for p in common[:n])
+        best_vor = sum(actual_vor[p] for p in hindsight_vor[:n])
+        results["vor_captured"][n] = pred_vor / best_vor if best_vor else 0.0
     return results
 
 
@@ -88,9 +113,10 @@ def report(res: Dict) -> None:
     print(f"Players graded: {res['coverage']}")
     print(f"Spearman rank correlation (all graded):    {res['spearman_all']:.3f}")
     print(f"Spearman rank correlation (predicted top 150): {res['spearman_top150']:.3f}")
-    print(f"{'Top-N':>6} {'hits':>6} {'value captured':>15}")
+    print(f"{'Top-N':>6} {'hits':>6} {'raw value':>10} {'VOR value':>10}")
     for n in (12, 24, 50, 100):
-        print(f"{n:>6} {res['hits'][n]:>4}/{n:<3} {res['value_captured'][n]:>14.1%}")
+        print(f"{n:>6} {res['hits'][n]:>4}/{n:<3} {res['value_captured'][n]:>9.1%} "
+              f"{res['vor_captured'][n]:>9.1%}")
 
 
 def rookie_projections_for(test_season: int, rules: ScoringRules, top_n: int):
@@ -109,6 +135,8 @@ def main() -> None:
     parser.add_argument("--test-season", type=int, default=2025)
     parser.add_argument("--recency-decay", type=float, default=0.5)
     parser.add_argument("--num-teams", type=int, default=12)
+    parser.add_argument("--blend", type=float, default=1.0,
+                        help="weight on the supervised model vs weighted history (1.0 = model only)")
     parser.add_argument("--embed-rookies", type=int, default=12,
                         help="embed top-N projected rookies into the board (0 = off)")
     args = parser.parse_args()
@@ -126,35 +154,70 @@ def main() -> None:
     rules = settings.scoring_rules
     actual = actual_total_points(test_logs, test_pos, rules)
 
+    actual_vor = actual_vor_values(actual, test_pos, settings)
+
     rookies = rookie_projections_for(test_season, rules, args.embed_rookies) \
         if args.embed_rookies else []
     if rookies:
         print(f"Embedded rookies ({len(rookies)}): "
               + ", ".join(r["player"] for r in rookies))
 
-    # --- Strategy under test: weighted VOR board with rookies embedded ---
+    # --- Strategy under test: supervised veteran projection model ---
+    model_seasons = list(range(2014, test_season))
+    for season in model_seasons:
+        download_assets(season)
+    model_logs, model_pos, _ = load_seasons(model_seasons)
+    summaries = build_summaries(model_logs, model_pos, rules)
+    proj = VeteranProjector().fit(
+        summaries, model_pos, list(range(2017, test_season))
+    )
+    print(f"VeteranProjector: alpha {proj.alpha}, CV R^2 {proj.cv_r2:.3f} "
+          f"(targets 2017-{test_season - 1})")
+    predictions = proj.predict_season(summaries, model_pos, test_season)
+    if args.blend < 1.0:
+        from fantasy_football.vor import compute_weighted_base_value
+        for name in predictions:
+            season_logs = {s: train_logs[s][name] for s in train_logs if name in train_logs[s]}
+            wb = compute_weighted_base_value(
+                season_logs, rules, train_pos.get(name, ""),
+                settings.season_games, settings.risk_aversion, settings.recency_decay,
+            )
+            predictions[name] = round(args.blend * predictions[name] + (1 - args.blend) * wb, 4)
+    model_rows = generate_draft_order(
+        train_logs, dict(train_pos), settings, dict(train_teams),
+        rookie_projections=rookies, base_value_override=predictions,
+    )
+    model_res = evaluate([r["player"] for r in model_rows], actual, actual_vor,
+                         f"Supervised model (blend {args.blend}) + top-{len(rookies)} rookies")
+
+    # --- Previous engine: weighted VOR board with rookies embedded ---
     rows = generate_draft_order(train_logs, dict(train_pos), settings, dict(train_teams),
                                 rookie_projections=rookies)
     predicted = [r["player"] for r in rows]
     label = (f"{len(train_seasons)}-season weighted VOR (decay {args.recency_decay})"
              + (f" + top-{len(rookies)} rookies" if rookies else ""))
-    main_res = evaluate(predicted, actual, label)
-
-    # --- Veteran-only board (no rookies) for comparison ---
-    vet_rows = generate_draft_order(train_logs, dict(train_pos), settings, dict(train_teams))
-    vet_res = evaluate([r["player"] for r in vet_rows], actual, "Same board, veterans only")
+    main_res = evaluate(predicted, actual, actual_vor, label)
 
     # --- Baseline: last season only ---
     last = train_seasons[-1]
     baseline_rows = generate_draft_order(
         {last: train_logs[last]}, dict(train_pos), settings, dict(train_teams)
     )
-    base_res = evaluate([r["player"] for r in baseline_rows], actual,
+    base_res = evaluate([r["player"] for r in baseline_rows], actual, actual_vor,
                         f"Baseline: {last} season only")
 
+    # --- Oracle ceiling: perfect foresight over the same candidate pool ---
+    pool = {r["player"] for r in model_rows}
+    oracle_order = sorted((p for p in actual if p in pool), key=lambda p: -actual[p])
+    oracle_res = evaluate(oracle_order, actual, actual_vor,
+                          "Oracle ceiling (perfect ranking of the same pool)")
+
+    report(model_res)
     report(main_res)
-    report(vet_res)
     report(base_res)
+    report(oracle_res)
+
+    rows = model_rows  # detail CSV shows the best board
 
     # How much 2025 production was undraftable (rookies etc.)?
     hindsight = sorted(actual, key=lambda p: -actual[p])

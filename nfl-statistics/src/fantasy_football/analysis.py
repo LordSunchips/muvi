@@ -32,6 +32,7 @@ def generate_draft_order(
     league_settings: LeagueSettings,
     player_teams: Optional[Dict[str, str]] = None,
     rookie_projections: Optional[List[Dict]] = None,
+    base_value_override: Optional[Dict[str, float]] = None,
 ) -> List[Dict]:
     """Rank all players by VOR — the recommended draft order.
 
@@ -61,17 +62,22 @@ def generate_draft_order(
             if name in logs
         }
 
-    base_values = {
-        name: compute_weighted_base_value(
-            season_logs,
-            rules,
-            player_positions.get(name, ""),
-            league_settings.season_games,
-            league_settings.risk_aversion,
-            league_settings.recency_decay,
-        )
-        for name, season_logs in per_player.items()
-    }
+    if base_value_override is not None:
+        base_values = {
+            name: base_value_override.get(name, 0.0) for name in per_player
+        }
+    else:
+        base_values = {
+            name: compute_weighted_base_value(
+                season_logs,
+                rules,
+                player_positions.get(name, ""),
+                league_settings.season_games,
+                league_settings.risk_aversion,
+                league_settings.recency_decay,
+            )
+            for name, season_logs in per_player.items()
+        }
     rookies = {r["player"]: r for r in (rookie_projections or [])
                if r["player"] not in base_values}
     for name, r in rookies.items():

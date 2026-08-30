@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from fantasy_football.data import download_assets, load_seasons
 from fantasy_football.analysis import generate_draft_order, write_draft_order_csv
+from fantasy_football.projection import VeteranProjector, build_summaries
 from fantasy_football.vor import LeagueSettings
 
 
@@ -26,6 +27,8 @@ def main() -> None:
     parser.add_argument("--risk-aversion", type=float, default=0.1)
     parser.add_argument("--min-games", type=int, default=1,
                         help="exclude players with fewer games in the latest season")
+    parser.add_argument("--engine", choices=["model", "weighted"], default="model",
+                        help="model: supervised projection (default); weighted: recency-weighted average")
     parser.add_argument("--embed-rookies", type=int, default=12,
                         help="embed top-N ML-projected rookies from the upcoming draft class (0 = off)")
     parser.add_argument("--output", type=Path, default=None)
@@ -57,8 +60,22 @@ def main() -> None:
         print(f"Embedded rookies (class of {args.season + 1}): "
               + ", ".join(r["player"] for r in rookies))
 
+    base_override = None
+    if args.engine == "model":
+        model_seasons = list(range(2014, args.season + 1))
+        for season in model_seasons:
+            download_assets(season)
+        model_logs, model_pos, _ = load_seasons(model_seasons)
+        summaries = build_summaries(model_logs, model_pos, settings.scoring_rules)
+        proj = VeteranProjector().fit(
+            summaries, model_pos, list(range(2017, args.season + 1))
+        )
+        print(f"VeteranProjector: alpha {proj.alpha}, CV R^2 {proj.cv_r2:.3f}")
+        base_override = proj.predict_season(summaries, model_pos, args.season + 1)
+
     rows = generate_draft_order(logs_by_season, positions, settings, teams,
-                                rookie_projections=rookies)
+                                rookie_projections=rookies,
+                                base_value_override=base_override)
 
     output = args.output or Path(__file__).parent / "reports" / f"draft_order_{args.season}.csv"
     write_draft_order_csv(rows, output)

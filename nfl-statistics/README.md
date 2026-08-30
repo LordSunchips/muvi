@@ -17,14 +17,19 @@ draft order. Sibling project to
    is Sleeper's default configuration: half-PPR, 4-pt passing TDs,
    -2 fumbles lost, distance-tiered kicker scoring with -1 misses, and
    tiered DEF points-allowed scoring.
-3. **Base value** — per season, `avg_score * availability - risk_aversion
-   * std_dev`. Availability (games played / 17) penalizes injury-prone
-   players; the standard-deviation term penalizes boom/bust inconsistency.
-   Per-season values are then combined into a recency-weighted average over
-   the past five seasons (weight `decay^seasons_ago`, default decay 0.5, chosen by backtest),
-   renormalized over the seasons a player actually has — a third-year
-   player is weighted across just their three seasons. Players absent from
-   the most recent season are excluded.
+3. **Base value** — the default engine (`--engine model`) is a supervised
+   projection: a ridge regression trained on 2014-present season-to-season
+   transitions predicts each player's next-season fantasy points per
+   roster slot (total/17) from three lagged seasons of production
+   (fantasy PPG, recent form), opportunity (carries, targets, pass
+   attempts per game), durability (games played), TD rate vs yardage
+   (TDs regress, yardage persists), experience, and position. The model
+   learns its own recency weights and aging effects from data.
+   `--engine weighted` falls back to the closed-form alternative: per
+   season, `avg_score * availability - risk_aversion * std_dev`, combined
+   with recency weights `decay^seasons_ago` (default 0.5) renormalized
+   over the seasons a player actually has. Either way, players absent
+   from the most recent season are excluded.
 4. **Replacement level** — for each position, the base value of the first
    player projected to go undrafted as a starter:
    rank `num_teams * starting_spots`, with the league's FLEX slots
@@ -69,13 +74,21 @@ python3 -m unittest discover -s tests
 
 ## Backtest
 
-`python3 backtest.py --test-season <year>` trains the board on the five
-preceding seasons (rookie model included, trained only on earlier draft
-classes — no leakage) and grades it against that season's actual
-production: Spearman rank correlation, top-N hit rates, and value
-captured vs a perfect-hindsight board, alongside veteran-only and
-last-season-only comparisons. Run for 2023, 2024, and 2025:
-`reports/backtest_<year>.csv` and `reports/backtest_summary.txt`.
+`python3 backtest.py --test-season <year>` trains every component only
+on data available before the test season (no leakage) and grades the
+board against actual production: Spearman rank correlation, top-N hit
+rates, and value captured vs a perfect-hindsight board — in two
+denominations. *Raw* value captured compares total points against the
+hindsight-best top-N, which is QB-dominated and therefore flatters
+QB-heavy boards; *VOR* value captured compares points above positional
+replacement, the quantity a draft actually maximizes. An oracle row
+(perfect ranking of the same candidate pool) bounds what any model
+could score: because breakout late-round rookies are invisible and
+hindsight-best top-N is dominated by unpredictable outlier seasons, the
+oracle itself captures only ~60-88% of VOR value — treat these
+percentages as relative comparisons, not absolute grades. Results for
+2023-2025: `reports/backtest_<year>.csv` and
+`reports/backtest_summary.txt`.
 
 ## Rookie projections (supervised ML)
 

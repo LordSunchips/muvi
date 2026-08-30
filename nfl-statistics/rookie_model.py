@@ -45,13 +45,14 @@ def ensure_resources(cfb_raw_dir: Optional[Path] = None, rebuild: bool = False):
 
 
 def rookie_ppg(draft_year: int, rules: ScoringRules) -> Dict[str, float]:
-    """{normalized_name: fantasy PPG in the player's draft season}."""
+    """{normalized_name: fantasy points per roster slot (total/17) in the
+    player's draft season}."""
     logs, positions, _ = load_player_game_logs(draft_year)
     out = {}
     for name, log in logs.items():
         scores = rules.compute_season_scores(log, positions.get(name, ""))
         if scores:
-            out[normalize_name(name)] = sum(scores) / len(scores)
+            out[normalize_name(name)] = sum(scores) / 17.0
     return out
 
 
